@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/wallet/wallet.dart';
 import '../../../crypto/bitcoin/models/bitcoin_address.dart';
@@ -8,11 +9,22 @@ import '../../widgets/address/address_list_tile.dart';
 import '../../widgets/address/address_qr_dialog.dart';
 import '../../widgets/address/address_list.dart';
 import '../../router/app_router.dart';
+import '../../../crypto/bitcoin/bitcoin_payments.dart';
+import '../../../crypto/bitcoin/bitcoin_blockchain_client.dart';
+import '../../../core/wallet/network.dart';
+import 'bitcoin_send_page.dart';
 
 class BitcoinPage extends StatefulWidget {
-  const BitcoinPage({super.key, required this.wallet});
+  const BitcoinPage({
+    super.key,
+    required this.wallet,
+    this.payments,
+    this.network,
+  });
 
   final Wallet<BitcoinAddress> wallet;
+  final BitcoinPayments? payments;
+  final Network? network;
 
   @override
   State<BitcoinPage> createState() => _BitcoinPageState();
@@ -23,6 +35,20 @@ class _BitcoinPageState extends State<BitcoinPage> {
   bool _loading = true;
   bool _creating = false;
   String? _error;
+  bool _sending = false;
+
+  Future<void> _showSend(BitcoinAddress address) async {
+    if (_sending || widget.payments == null) return;
+    _sending = true;
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) =>
+            BitcoinSendPage(from: address, payments: widget.payments!),
+      ),
+    );
+    if (!mounted) return;
+    _sending = false;
+  }
 
   @override
   void initState() {
@@ -64,7 +90,15 @@ class _BitcoinPageState extends State<BitcoinPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('コピーしました')));
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('コピーしました'),
+            duration: Duration(seconds: 1),
+            behavior: SnackBarBehavior.floating,
+            elevation: 0,
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          ),
+        );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -73,12 +107,56 @@ class _BitcoinPageState extends State<BitcoinPage> {
     }
   }
 
-  Future<void> _showDetails(BitcoinAddress address) {
-    return showDialog<void>(
+  Future<void> _showDetails(BitcoinAddress address) async {
+    var currentAddress = address;
+    final send = await showDialog<bool>(
       context: context,
-      builder: (_) =>
-          AddressQrDialog(name: address.displayName, address: address.address),
+      builder: (dialogContext) => AddressQrDialog(
+        name: address.displayName,
+        address: address.address,
+        onCopy: () => _copyAddress(address.address),
+        onOpenExplorer: () => _openExplorer(address),
+        onRename: (name) async {
+          final renamed = currentAddress.copyWith(displayName: name);
+          await widget.wallet.saveAddress(renamed);
+          currentAddress = renamed;
+          if (!mounted) return;
+          setState(() {
+            _addresses = _addresses
+                .map((item) => item.address == renamed.address ? renamed : item)
+                .toList();
+          });
+        },
+        loadBalance: widget.payments == null
+            ? null
+            : () => widget.payments!.getBalance(address),
+        onSend: widget.payments == null
+            ? null
+            : () => Navigator.of(dialogContext).pop(true),
+      ),
     );
+    if (mounted && send == true) {
+      await _showSend(currentAddress);
+      if (mounted) await _showDetails(currentAddress);
+    }
+  }
+
+  Future<void> _openExplorer(BitcoinAddress address) async {
+    final base = address.network == Network.testnet
+        ? BitcoinBlockchainClient.explorerBaseUrl
+        : 'https://blockstream.info';
+    final url = Uri.parse(
+      '$base/address/${Uri.encodeComponent(address.address)}',
+    );
+    try {
+      if (await launchUrl(url, mode: LaunchMode.externalApplication)) return;
+    } catch (_) {
+      // ブラウザを開けなかった場合は以下で通知する。
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('Explorerを開けませんでした。')));
   }
 
   Future<void> _showCreate() async {
@@ -101,8 +179,31 @@ class _BitcoinPageState extends State<BitcoinPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final network =
+        widget.network ??
+        (_addresses.isEmpty ? null : _addresses.first.network);
     return Scaffold(
-      appBar: AppBar(title: const Text('Bitcoin')),
+      appBar: AppBar(
+        toolbarHeight: 68,
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Bitcoin'),
+            if (network != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                network == Network.mainnet ? 'Mainnet' : 'Testnet4',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w400,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -111,13 +212,30 @@ class _BitcoinPageState extends State<BitcoinPage> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _loading || _error != null || _creating ? null : _showCreate,
-        backgroundColor: const Color(0xFFFFDABC),
-        foregroundColor: const Color(0xFF221A15),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        icon: const Icon(Icons.add, size: 26),
-        label: const Text('新しいアドレス'),
+      floatingActionButton: SizedBox(
+        height: 48,
+        child: FloatingActionButton.extended(
+          onPressed: _loading || _error != null || _creating
+              ? null
+              : _showCreate,
+          backgroundColor: const Color(0xFFFFDABC),
+          foregroundColor: const Color(0xFF221A15),
+          elevation: 0,
+          focusElevation: 0,
+          hoverElevation: 0,
+          highlightElevation: 0,
+          disabledElevation: 0,
+          extendedPadding: const EdgeInsets.symmetric(horizontal: 16),
+          extendedIconLabelSpacing: 8,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          icon: const Icon(Icons.add, size: 22),
+          label: const Text(
+            '新しいアドレス',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+        ),
       ),
     );
   }

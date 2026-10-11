@@ -17,7 +17,7 @@ class AddressList extends StatelessWidget {
     if (itemCount == 0) return const AddressEmptyState();
 
     return ListView.separated(
-      padding: EdgeInsets.zero,
+      padding: const EdgeInsets.only(top: 8, bottom: 88),
       itemCount: itemCount,
       itemBuilder: itemBuilder,
       separatorBuilder: (_, _) => const Divider(indent: 20, endIndent: 20),
