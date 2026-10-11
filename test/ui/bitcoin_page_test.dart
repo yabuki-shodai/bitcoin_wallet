@@ -204,6 +204,72 @@ void main() {
       wallet.addresses.single.address,
     );
     expect(find.byType(QrImageView), findsOneWidget);
+    expect(find.byIcon(Icons.delete_outline), findsNothing);
+    copied = null;
+    await tester.tap(find.byTooltip('アドレスをコピー'));
+    await tester.pumpAndSettle();
+    expect(copied, wallet.addresses.single.address);
+    expect(find.byType(AddressQrDialog), findsOneWidget);
+  });
+
+  testWidgets('詳細のExplorerボタンからTestnet4のアドレスをブラウザで開く', (tester) async {
+    final wallet = TestWallet();
+    wallet.addresses.add(await wallet.generateAddress('普段使い'));
+    const channel = MethodChannel('plugins.flutter.io/url_launcher');
+    final calls = <MethodCall>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      calls.add(call);
+      return true;
+    });
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        null,
+      ),
+    );
+    await openPage(tester, wallet);
+    await tester.tap(find.byType(AddressListTile));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Explorerを開く'));
+    await tester.tap(find.text('Explorerを開く'));
+    await tester.pumpAndSettle();
+    expect(calls, hasLength(1));
+    expect(calls.single.method, 'launch');
+    final arguments = calls.single.arguments as Map;
+    expect(
+      arguments['url'],
+      'https://mempool.space/testnet4/address/${wallet.addresses.single.address}',
+    );
+    expect(arguments['useWebView'], isFalse);
+    expect(arguments['useSafariVC'], isFalse);
+    expect(find.byType(AddressQrDialog), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Explorerを開けない場合にエラーを表示する', (tester) async {
+    final wallet = TestWallet();
+    wallet.addresses.add(await wallet.generateAddress('普段使い'));
+    const channel = MethodChannel('plugins.flutter.io/url_launcher');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      channel,
+      (_) async => false,
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        null,
+      ),
+    );
+    await openPage(tester, wallet);
+    await tester.tap(find.byType(AddressListTile));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Explorerを開く'));
+    await tester.tap(find.text('Explorerを開く'));
+    await tester.pumpAndSettle();
+    expect(find.text('Explorerを開けませんでした。'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('小さい画面とキーボード表示中も作成できる', (tester) async {
