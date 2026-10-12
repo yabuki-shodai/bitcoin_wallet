@@ -10,10 +10,8 @@ class AppRouter {
   static const bitcoinCreate = '/bitcoin/addresses/new';
 
   static Map<String, WidgetBuilder> routes(BitcoinWallet wallet) => {
-    Navigator.defaultRouteName: (_) =>
-        BitcoinPage(wallet: wallet, payments: wallet, network: wallet.network),
-    bitcoin: (_) =>
-        BitcoinPage(wallet: wallet, payments: wallet, network: wallet.network),
+    Navigator.defaultRouteName: (_) => BitcoinPage(wallet: wallet),
+    bitcoin: (_) => BitcoinPage(wallet: wallet),
   };
 
   static Route<BitcoinAddress>? createRoute(

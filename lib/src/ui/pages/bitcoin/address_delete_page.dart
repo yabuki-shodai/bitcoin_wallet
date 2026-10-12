@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../core/wallet/wallet.dart';
+import '../../../crypto/bitcoin/bitcoin_wallet.dart';
 import '../../../crypto/bitcoin/models/bitcoin_address.dart';
 import '../../../crypto/bitcoin/models/bitcoin_address_type.dart';
 import '../../widgets/address/address_delete_dialog.dart';
@@ -11,7 +11,7 @@ import '../../widgets/address/address_list_tile.dart';
 class AddressDeletePage extends StatefulWidget {
   const AddressDeletePage({super.key, required this.wallet});
 
-  final Wallet<BitcoinAddress> wallet;
+  final BitcoinWallet wallet;
 
   @override
   State<AddressDeletePage> createState() => _AddressDeletePageState();

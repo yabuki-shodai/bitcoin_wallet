@@ -1,33 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../crypto/bitcoin/bitcoin_wallet.dart';
 import '../../../core/wallet/network.dart';
-import '../../../crypto/bitcoin/bitcoin_address_decoder.dart';
-import '../../../crypto/bitcoin/bitcoin_blockchain_client.dart';
-import '../../../crypto/bitcoin/bitcoin_payments.dart';
 import '../../../crypto/bitcoin/models/bitcoin_address.dart';
-import '../../../crypto/bitcoin/models/prepared_bitcoin_payment.dart';
+import '../../../crypto/bitcoin/models/bitcoin_payment_preparation.dart';
 
 class BitcoinSendPage extends StatefulWidget {
-  const BitcoinSendPage({
-    super.key,
-    required this.from,
-    required this.payments,
-  });
+  const BitcoinSendPage({super.key, required this.from, required this.wallet});
 
   final BitcoinAddress from;
-  final BitcoinPayments payments;
+  final BitcoinWallet wallet;
 
   @override
   State<BitcoinSendPage> createState() => _BitcoinSendPageState();
 }
 
 class _BitcoinSendPageState extends State<BitcoinSendPage> {
-  final _form = GlobalKey<FormState>();
   final _to = TextEditingController();
   final _amount = TextEditingController();
   final _feeRate = TextEditingController(text: '2');
-  PreparedBitcoinPayment? _payment;
+  BitcoinPaymentPreview? _payment;
+  BitcoinPaymentInputErrors? _inputErrors;
   bool _busy = false;
   bool _attempted = false;
   String? _txid;
@@ -42,21 +36,29 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
   }
 
   Future<void> _prepare() async {
-    if (_busy || !_form.currentState!.validate()) return;
+    if (_busy) return;
     FocusScope.of(context).unfocus();
     setState(() {
       _busy = true;
       _error = null;
+      _inputErrors = null;
     });
     try {
-      final payment = await widget.payments.preparePayment(
+      final result = await widget.wallet.preparePayment(
         from: widget.from,
-        toAddress: _to.text.trim(),
-        amount: parseBitcoin(_amount.text)!,
-        feeRate: int.parse(_feeRate.text.trim()),
+        toAddress: _to.text,
+        amount: _amount.text,
+        feeRate: _feeRate.text,
       );
       if (!mounted) return;
-      setState(() => _payment = payment);
+      setState(() {
+        switch (result) {
+          case BitcoinPaymentInputErrors():
+            _inputErrors = result;
+          case BitcoinPaymentPreview():
+            _payment = result;
+        }
+      });
     } on StateError catch (error) {
       if (mounted) setState(() => _error = error.message);
     } on ArgumentError {
@@ -76,7 +78,7 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
       _error = null;
     });
     try {
-      final txid = await widget.payments.sendPayment(_payment!);
+      final txid = await widget.wallet.sendPayment(_payment!);
       if (mounted) setState(() => _txid = txid);
     } catch (_) {
       if (mounted) {
@@ -86,18 +88,6 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
       }
     } finally {
       if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  String? _validateAddress(String? value) {
-    try {
-      final address = BitcoinAddressDecoder().decode(value?.trim() ?? '');
-      if (address.network != widget.from.network) {
-        return '送信元と同じネットワークのアドレスを入力してください';
-      }
-      return null;
-    } catch (_) {
-      return '有効なP2PKHまたはP2WPKHアドレスを入力してください';
     }
   }
 
@@ -133,17 +123,18 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
                   const SizedBox(height: 24),
                   if (payment == null)
                     Form(
-                      key: _form,
                       child: Column(
                         children: [
                           TextFormField(
                             key: const Key('send-address'),
                             controller: _to,
                             enabled: !_busy,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: '宛先アドレス',
+                              errorText: _inputErrors?.toAddress,
                             ),
-                            validator: _validateAddress,
+                            onChanged: (_) =>
+                                setState(() => _inputErrors = null),
                           ),
                           const SizedBox(height: 16),
                           TextFormField(
@@ -153,18 +144,13 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
+                              errorText: _inputErrors?.amount,
                               labelText: '送金額 (BTC)',
                               helperText: '最小0.00000546 BTC・小数点以下8桁まで',
                             ),
-                            validator: (value) {
-                              final amount = parseBitcoin(value ?? '');
-                              if (amount == null) return '有効な送金額を入力してください';
-                              if (amount < 546) {
-                                return '送金額は0.00000546 BTC以上で入力してください';
-                              }
-                              return null;
-                            },
+                            onChanged: (_) =>
+                                setState(() => _inputErrors = null),
                           ),
                           const SizedBox(height: 16),
                           TextFormField(
@@ -175,16 +161,13 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
                             inputFormatters: [
                               FilteringTextInputFormatter.digitsOnly,
                             ],
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
+                              errorText: _inputErrors?.feeRate,
                               labelText: '手数料率 (sat/vB)',
                               helperText: '手数料が低いと承認まで時間がかかる場合があります',
                             ),
-                            validator: (value) {
-                              final rate = int.tryParse(value ?? '');
-                              return rate == null || rate <= 0
-                                  ? '1以上の整数を入力してください'
-                                  : null;
-                            },
+                            onChanged: (_) =>
+                                setState(() => _inputErrors = null),
                           ),
                         ],
                       ),
@@ -193,25 +176,17 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
                     const Text('宛先'),
                     SelectableText(payment.toAddress),
                     const SizedBox(height: 16),
-                    Text('送金額: ${formatBitcoin(payment.amount)} BTC'),
-                    Text(
-                      '手数料: ${formatBitcoin(payment.fee)} BTC (${payment.fee} sat)',
-                    ),
-                    Text(
-                      '合計: ${formatBitcoin(payment.amount + payment.fee)} BTC',
-                    ),
-                    Text(
-                      '実際の手数料率: ${(payment.fee / payment.virtualSize).toStringAsFixed(2)} sat/vB',
-                    ),
+                    Text('送金額: ${payment.amountText}'),
+                    Text('手数料: ${payment.feeText}'),
+                    Text('合計: ${payment.totalText}'),
+                    Text('実際の手数料率: ${payment.feeRateText}'),
                     const SizedBox(height: 16),
                     const Text('お釣りは送信元アドレスに戻ります。'),
                     if (_attempted) ...[
                       const SizedBox(height: 20),
                       Text(sent ? '取引を送信しました。承認をお待ちください。' : '取引ID'),
                       SelectableText(_txid ?? payment.txid),
-                      SelectableText(
-                        '${widget.from.network == Network.testnet ? BitcoinBlockchainClient.explorerBaseUrl : 'https://blockstream.info'}/tx/${payment.txid}',
-                      ),
+                      SelectableText(payment.explorerUrl.toString()),
                     ],
                   ],
                   if (_error != null) ...[

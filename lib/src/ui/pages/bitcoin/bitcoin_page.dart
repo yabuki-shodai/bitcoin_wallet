@@ -2,30 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../../core/wallet/wallet.dart';
+import '../../../crypto/bitcoin/bitcoin_wallet.dart';
+import '../../../core/wallet/network.dart';
 import '../../../crypto/bitcoin/models/bitcoin_address.dart';
 import '../../../crypto/bitcoin/models/bitcoin_address_type.dart';
 import '../../widgets/address/address_list_tile.dart';
 import '../../widgets/address/address_qr_dialog.dart';
 import '../../widgets/address/address_list.dart';
 import '../../router/app_router.dart';
-import '../../../crypto/bitcoin/bitcoin_payments.dart';
-import '../../../crypto/bitcoin/bitcoin_blockchain_client.dart';
-import '../../../core/wallet/network.dart';
 import 'bitcoin_send_page.dart';
 import 'bitcoin_menu_page.dart';
 
 class BitcoinPage extends StatefulWidget {
-  const BitcoinPage({
-    super.key,
-    required this.wallet,
-    this.payments,
-    this.network,
-  });
+  const BitcoinPage({super.key, required this.wallet});
 
-  final Wallet<BitcoinAddress> wallet;
-  final BitcoinPayments? payments;
-  final Network? network;
+  final BitcoinWallet wallet;
 
   @override
   State<BitcoinPage> createState() => _BitcoinPageState();
@@ -51,12 +42,11 @@ class _BitcoinPageState extends State<BitcoinPage> {
   }
 
   Future<void> _showSend(BitcoinAddress address) async {
-    if (_sending || widget.payments == null) return;
+    if (_sending) return;
     _sending = true;
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) =>
-            BitcoinSendPage(from: address, payments: widget.payments!),
+        builder: (_) => BitcoinSendPage(from: address, wallet: widget.wallet),
       ),
     );
     if (!mounted) return;
@@ -140,12 +130,8 @@ class _BitcoinPageState extends State<BitcoinPage> {
                 .toList();
           });
         },
-        loadBalance: widget.payments == null
-            ? null
-            : () => widget.payments!.getBalance(address),
-        onSend: widget.payments == null
-            ? null
-            : () => Navigator.of(dialogContext).pop(true),
+        loadBalance: () => widget.wallet.getBalance(address),
+        onSend: () => Navigator.of(dialogContext).pop(true),
       ),
     );
     if (mounted && send == true) {
@@ -155,12 +141,7 @@ class _BitcoinPageState extends State<BitcoinPage> {
   }
 
   Future<void> _openExplorer(BitcoinAddress address) async {
-    final base = address.network == Network.testnet
-        ? BitcoinBlockchainClient.explorerBaseUrl
-        : 'https://blockstream.info';
-    final url = Uri.parse(
-      '$base/address/${Uri.encodeComponent(address.address)}',
-    );
+    final url = widget.wallet.addressExplorerUrl(address);
     try {
       if (await launchUrl(url, mode: LaunchMode.externalApplication)) return;
     } catch (_) {
@@ -193,9 +174,7 @@ class _BitcoinPageState extends State<BitcoinPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final network =
-        widget.network ??
-        (_addresses.isEmpty ? null : _addresses.first.network);
+    final network = widget.wallet.network;
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 68,
@@ -210,7 +189,7 @@ class _BitcoinPageState extends State<BitcoinPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text('Bitcoin'),
-            if (network != null) ...[
+            ...[
               const SizedBox(height: 2),
               Text(
                 network == Network.mainnet ? 'Mainnet' : 'Testnet4',
