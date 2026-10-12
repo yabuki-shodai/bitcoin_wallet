@@ -107,4 +107,9 @@ class BitcoinWallet implements Wallet<BitcoinAddress>, BitcoinPayments {
   Future<void> saveAddress(BitcoinAddress address) async {
     await repostory.saveAddress(address);
   }
+
+  @override
+  Future<void> deleteAddress(BitcoinAddress address) async {
+    await repostory.deleteAddress(address);
+  }
 }
