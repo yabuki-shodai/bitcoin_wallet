@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_payment_preview.dart';
 
-import '../../../crypto/bitcoin/bitcoin_wallet.dart';
-import '../../../core/wallet/network.dart';
-import '../../../crypto/bitcoin/models/bitcoin_address.dart';
-import '../../../crypto/bitcoin/models/bitcoin_payment_preparation.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_wallet.dart';
+import 'package:bitcoin_wallet/src/core/wallet/network.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address.dart';
+// import '../../../crypto/bitcoin/models/bitcoin_payment_preview.dart';
 
 class BitcoinSendPage extends StatefulWidget {
   const BitcoinSendPage({super.key, required this.from, required this.wallet});
@@ -21,7 +22,6 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
   final _amount = TextEditingController();
   final _feeRate = TextEditingController(text: '2');
   BitcoinPaymentPreview? _payment;
-  BitcoinPaymentInputErrors? _inputErrors;
   bool _busy = false;
   bool _attempted = false;
   String? _txid;
@@ -41,7 +41,6 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
     setState(() {
       _busy = true;
       _error = null;
-      _inputErrors = null;
     });
     try {
       final result = await widget.wallet.preparePayment(
@@ -51,18 +50,15 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
         feeRate: _feeRate.text,
       );
       if (!mounted) return;
-      setState(() {
-        switch (result) {
-          case BitcoinPaymentInputErrors():
-            _inputErrors = result;
-          case BitcoinPaymentPreview():
-            _payment = result;
-        }
-      });
+      setState(() => _payment = result);
     } on StateError catch (error) {
       if (mounted) setState(() => _error = error.message);
-    } on ArgumentError {
-      if (mounted) setState(() => _error = '送金額やアドレスを確認してください。');
+    } on ArgumentError catch (error) {
+      if (mounted) {
+        setState(
+          () => _error = error.message?.toString() ?? '送金額やアドレスを確認してください。',
+        );
+      }
     } catch (_) {
       if (mounted) setState(() => _error = '送金を準備できませんでした。通信状態を確認して再試行してください。');
     } finally {
@@ -129,12 +125,10 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
                             key: const Key('send-address'),
                             controller: _to,
                             enabled: !_busy,
-                            decoration: InputDecoration(
+                            decoration: const InputDecoration(
                               labelText: '宛先アドレス',
-                              errorText: _inputErrors?.toAddress,
                             ),
-                            onChanged: (_) =>
-                                setState(() => _inputErrors = null),
+                            onChanged: (_) => setState(() => _error = null),
                           ),
                           const SizedBox(height: 16),
                           TextFormField(
@@ -144,13 +138,11 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
-                            decoration: InputDecoration(
-                              errorText: _inputErrors?.amount,
+                            decoration: const InputDecoration(
                               labelText: '送金額 (BTC)',
                               helperText: '最小0.00000546 BTC・小数点以下8桁まで',
                             ),
-                            onChanged: (_) =>
-                                setState(() => _inputErrors = null),
+                            onChanged: (_) => setState(() => _error = null),
                           ),
                           const SizedBox(height: 16),
                           TextFormField(
@@ -161,13 +153,11 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
                             inputFormatters: [
                               FilteringTextInputFormatter.digitsOnly,
                             ],
-                            decoration: InputDecoration(
-                              errorText: _inputErrors?.feeRate,
+                            decoration: const InputDecoration(
                               labelText: '手数料率 (sat/vB)',
                               helperText: '手数料が低いと承認まで時間がかかる場合があります',
                             ),
-                            onChanged: (_) =>
-                                setState(() => _inputErrors = null),
+                            onChanged: (_) => setState(() => _error = null),
                           ),
                         ],
                       ),

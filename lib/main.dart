@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 
-import 'src/core/secure/private_key_store.dart';
-import 'src/core/storage/hive_initializer.dart';
-import 'src/core/wallet/network.dart';
-import 'src/crypto/bitcoin/bitcoin_wallet.dart';
-import 'src/crypto/bitcoin/repository/bitcoin_repository.dart';
-import 'src/ui/app.dart';
+import 'package:bitcoin_wallet/src/core/secure/private_key_store.dart';
+import 'package:bitcoin_wallet/src/core/storage/hive_initializer.dart';
+import 'package:bitcoin_wallet/src/core/wallet/network.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_wallet.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/repository/bitcoin_repository.dart';
+import 'package:bitcoin_wallet/src/ui/app.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

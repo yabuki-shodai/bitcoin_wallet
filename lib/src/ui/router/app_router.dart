@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../crypto/bitcoin/bitcoin_wallet.dart';
-import '../../crypto/bitcoin/models/bitcoin_address.dart';
-import '../pages/bitcoin/address_create_page.dart';
-import '../pages/bitcoin/bitcoin_page.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_wallet.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address.dart';
+import 'package:bitcoin_wallet/src/ui/pages/bitcoin/address_create_page.dart';
+import 'package:bitcoin_wallet/src/ui/pages/bitcoin/bitcoin_page.dart';
 
 class AppRouter {
   static const bitcoin = '/bitcoin';

@@ -5,7 +5,6 @@ import 'package:bitcoin_wallet/src/core/secure/private_key_store.dart';
 import 'package:bitcoin_wallet/src/core/wallet/network.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_wallet.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_blockchain_client.dart';
-import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_payment_preparation.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_utxo.dart';
 import 'package:bitcoin_wallet/src/ui/pages/bitcoin/bitcoin_send_page.dart';
 import 'package:convert/convert.dart' as convert;
@@ -102,22 +101,22 @@ void main() {
     type: BitcoinAddressType.p2pkh,
   );
 
-  test('不正な項目をまとめて返し秘密鍵・UTXOを取得しない', () async {
+  test('不正な入力は例外にし秘密鍵・UTXOを取得しない', () async {
     final store = TestKeyStore();
     final client = TestBlockchainClient();
     addTearDown(client.close);
     final wallet = createWallet(Network.mainnet, store: store, client: client);
-    final result = await wallet.preparePayment(
-      from: source(Network.mainnet),
-      toAddress: 'invalid',
-      amount: '0.00000001',
-      feeRate: '0',
+    await expectLater(
+      wallet.preparePayment(
+        from: source(Network.mainnet),
+        toAddress: 'invalid',
+        amount: '0.00000001',
+        feeRate: '0',
+      ),
+      throwsA(
+        isA<ArgumentError>().having((error) => error.name, 'name', 'toAddress'),
+      ),
     );
-    expect(result, isA<BitcoinPaymentInputErrors>());
-    final errors = result as BitcoinPaymentInputErrors;
-    expect(errors.toAddress, isNotNull);
-    expect(errors.amount, contains('0.00000546'));
-    expect(errors.feeRate, isNotNull);
     expect(store.reads, 0);
     expect(client.reads, 0);
   });
@@ -129,25 +128,36 @@ void main() {
       '1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMJ',
       '3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy',
     ]) {
-      final result = await wallet.preparePayment(
-        from: source(Network.mainnet),
-        toAddress: address,
+      await expectLater(
+        wallet.preparePayment(
+          from: source(Network.mainnet),
+          toAddress: address,
+          amount: '0.00000546',
+          feeRate: '2',
+        ),
+        throwsA(
+          isA<ArgumentError>().having(
+            (error) => error.name,
+            'name',
+            'toAddress',
+          ),
+        ),
+      );
+    }
+    await expectLater(
+      createWallet(Network.testnet).preparePayment(
+        from: source(Network.testnet),
+        toAddress: mainnetAddress,
         amount: '0.00000546',
         feeRate: '2',
-      );
-      expect((result as BitcoinPaymentInputErrors).toAddress, isNotNull);
-      expect(result.amount, isNull);
-      expect(result.feeRate, isNull);
-    }
-    final wrongNetwork = await createWallet(Network.testnet).preparePayment(
-      from: source(Network.testnet),
-      toAddress: mainnetAddress,
-      amount: '0.00000546',
-      feeRate: '2',
-    );
-    expect(
-      (wrongNetwork as BitcoinPaymentInputErrors).toAddress,
-      contains('ネットワーク'),
+      ),
+      throwsA(
+        isA<ArgumentError>().having(
+          (error) => error.message,
+          'message',
+          contains('ネットワーク'),
+        ),
+      ),
     );
     for (final amount in [
       '0',
@@ -156,30 +166,31 @@ void main() {
       '21000000.00000001',
       '1e2',
       'abc',
+      '0.00000545',
     ]) {
-      final result = await wallet.preparePayment(
-        from: source(Network.mainnet),
-        toAddress: mainnetAddress,
-        amount: amount,
-        feeRate: '2',
-      );
-      expect(
-        (result as BitcoinPaymentInputErrors).amount,
-        isNotNull,
-        reason: amount,
+      await expectLater(
+        wallet.preparePayment(
+          from: source(Network.mainnet),
+          toAddress: mainnetAddress,
+          amount: amount,
+          feeRate: '2',
+        ),
+        throwsA(
+          isA<ArgumentError>().having((error) => error.name, 'name', 'amount'),
+        ),
       );
     }
     for (final rate in ['0', '-1', '1.5', '+2', 'abc']) {
-      final result = await wallet.preparePayment(
-        from: source(Network.mainnet),
-        toAddress: mainnetAddress,
-        amount: '0.00000546',
-        feeRate: rate,
-      );
-      expect(
-        (result as BitcoinPaymentInputErrors).feeRate,
-        isNotNull,
-        reason: rate,
+      await expectLater(
+        wallet.preparePayment(
+          from: source(Network.mainnet),
+          toAddress: mainnetAddress,
+          amount: '0.00000546',
+          feeRate: rate,
+        ),
+        throwsA(
+          isA<ArgumentError>().having((error) => error.name, 'name', 'feeRate'),
+        ),
       );
     }
     expect(store.reads, 0);
@@ -208,7 +219,7 @@ void main() {
       amount: ' 0.00009800 ',
       feeRate: ' 1 ',
     );
-    final payment = result as BitcoinPaymentPreview;
+    final payment = result;
     expect(payment.toAddress, mainnetAddress);
     expect(payment.amountText, '0.00009800 BTC');
     expect(payment.feeText, '0.00000200 BTC (200 sat)');
@@ -243,7 +254,7 @@ void main() {
     );
   });
 
-  testWidgets('UIは項目別エラーを表示し修正後はwalletの確認結果を表示する', (tester) async {
+  testWidgets('UIは例外のエラーを表示し修正後はwalletの確認結果を表示する', (tester) async {
     final store = TestKeyStore()..privateKey = (Uint8List(32)..[31] = 1);
     final client = TestBlockchainClient();
     addTearDown(client.close);
@@ -256,7 +267,6 @@ void main() {
     await tester.tap(find.text('送金内容を確認'));
     await tester.pumpAndSettle();
     expect(find.text('有効なP2PKHまたはP2WPKHアドレスを入力してください'), findsOneWidget);
-    expect(find.text('有効な送金額を入力してください'), findsOneWidget);
     expect(store.reads, 0);
     await tester.enterText(
       find.byKey(const Key('send-address')),

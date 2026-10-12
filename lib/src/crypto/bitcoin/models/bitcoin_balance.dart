@@ -1,6 +1,6 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
-import 'bitcoin_utxo.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_utxo.dart';
 
 part 'bitcoin_balance.freezed.dart';
 

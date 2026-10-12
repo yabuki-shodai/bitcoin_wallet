@@ -1,25 +1,22 @@
-class BitcoinBalanceSummary {
-  BitcoinBalanceSummary({
-    required this.totalText,
-    required this.confirmedText,
-    required List<BitcoinUtxoSummary> utxos,
-  }) : utxos = List.unmodifiable(utxos);
+import 'package:freezed_annotation/freezed_annotation.dart';
 
-  final String totalText;
-  final String confirmedText;
-  final List<BitcoinUtxoSummary> utxos;
+part 'bitcoin_balance_summary.freezed.dart';
+
+@freezed
+abstract class BitcoinBalanceSummary with _$BitcoinBalanceSummary {
+  const factory BitcoinBalanceSummary({
+    required String totalText,
+    required String confirmedText,
+    required List<BitcoinUtxoSummary> utxos,
+  }) = _BitcoinBalanceSummary;
 }
 
-class BitcoinUtxoSummary {
-  const BitcoinUtxoSummary({
-    required this.txid,
-    required this.vout,
-    required this.valueText,
-    required this.confirmed,
-  });
-
-  final String txid;
-  final int vout;
-  final String valueText;
-  final bool confirmed;
+@freezed
+abstract class BitcoinUtxoSummary with _$BitcoinUtxoSummary {
+  const factory BitcoinUtxoSummary({
+    required String txid,
+    required int vout,
+    required String valueText,
+    required bool confirmed,
+  }) = _BitcoinUtxoSummary;
 }

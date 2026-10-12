@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'address_empty_state.dart';
+import 'package:bitcoin_wallet/src/ui/widgets/address/address_empty_state.dart';
 
 class AddressList extends StatelessWidget {
   const AddressList({

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import '../../../crypto/bitcoin/models/bitcoin_balance_summary.dart';
-import 'address_rename_dialog.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_balance_summary.dart';
+import 'package:bitcoin_wallet/src/ui/widgets/address/address_rename_dialog.dart';
 
 class AddressQrDialog extends StatefulWidget {
   const AddressQrDialog({

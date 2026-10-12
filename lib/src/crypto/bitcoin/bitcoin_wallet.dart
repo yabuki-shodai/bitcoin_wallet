@@ -1,17 +1,9 @@
-import 'package:bitcoin_wallet/src/core/key_pair/secp256/secp256_key_generator.dart';
-import 'package:bitcoin_wallet/src/core/secure/private_key_store.dart';
-import 'package:bitcoin_wallet/src/core/wallet/network.dart';
-import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_address_generator.dart';
-import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address.dart';
-import 'package:bitcoin_wallet/src/core/wallet/wallet.dart';
-import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address_type.dart';
-import 'package:bitcoin_wallet/src/crypto/bitcoin/repository/bitcoin_repository.dart';
-import 'bitcoin_address_decoder.dart';
-import 'bitcoin_blockchain_client.dart';
-import 'bitcoin_payments.dart';
-import 'bitcoin_transaction_builder.dart';
-import 'models/bitcoin_balance_summary.dart';
-import 'models/bitcoin_payment_preparation.dart';
+import 'package:bitcoin_wallet/src/core/key_pair/index.dart';
+import 'package:bitcoin_wallet/src/core/secure/index.dart';
+import 'package:bitcoin_wallet/src/core/wallet/index.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/index.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/index.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/repository/index.dart';
 
 class BitcoinWallet implements Wallet<BitcoinAddress>, BitcoinPayments {
   final Network network;
@@ -88,7 +80,7 @@ class BitcoinWallet implements Wallet<BitcoinAddress>, BitcoinPayments {
   }
 
   @override
-  Future<BitcoinPaymentPreparation> preparePayment({
+  Future<BitcoinPaymentPreview> preparePayment({
     required BitcoinAddress from,
     required String toAddress,
     required String amount,
@@ -96,33 +88,44 @@ class BitcoinWallet implements Wallet<BitcoinAddress>, BitcoinPayments {
   }) async {
     _checkNetwork(from);
     final destination = toAddress.trim();
-    String? addressError;
     try {
       _validatePaymentAddress(destination);
     } on ArgumentError {
-      addressError = '送信元と同じネットワークのアドレスを入力してください';
+      throw ArgumentError.value(
+        toAddress,
+        'toAddress',
+        '送信元と同じネットワークのアドレスを入力してください',
+      );
     } on FormatException {
-      addressError = '有効なP2PKHまたはP2WPKHアドレスを入力してください';
+      throw ArgumentError.value(
+        toAddress,
+        'toAddress',
+        '有効なP2PKHまたはP2WPKHアドレスを入力してください',
+      );
     } on UnsupportedError {
-      addressError = '有効なP2PKHまたはP2WPKHアドレスを入力してください';
+      throw ArgumentError.value(
+        toAddress,
+        'toAddress',
+        '有効なP2PKHまたはP2WPKHアドレスを入力してください',
+      );
     }
     final amountSats = _parseBitcoin(amount);
-    final amountError = amountSats == null
-        ? '有効な送金額を入力してください'
-        : amountSats < 546
-        ? '送金額は0.00000546 BTC以上で入力してください'
-        : null;
+    if (amountSats == null) {
+      throw ArgumentError.value(amount, 'amount', '有効な送金額を入力してください');
+    }
+    if (amountSats < 546) {
+      throw ArgumentError.value(
+        amount,
+        'amount',
+        '送金額は0.00000546 BTC以上で入力してください',
+      );
+    }
     final feeRateText = feeRate.trim();
     final rate = RegExp(r'^\d+$').hasMatch(feeRateText)
         ? int.tryParse(feeRateText)
         : null;
-    final feeRateError = rate == null || rate <= 0 ? '1以上の整数を入力してください' : null;
-    if (addressError != null || amountError != null || feeRateError != null) {
-      return BitcoinPaymentInputErrors(
-        toAddress: addressError,
-        amount: amountError,
-        feeRate: feeRateError,
-      );
+    if (rate == null || rate <= 0) {
+      throw ArgumentError.value(feeRate, 'feeRate', '1以上の整数を入力してください');
     }
 
     final privateKey = await store.readPrivateKey(from.address);
@@ -132,8 +135,8 @@ class BitcoinWallet implements Wallet<BitcoinAddress>, BitcoinPayments {
       utxos: utxos,
       privateKey: privateKey,
       toAddress: destination,
-      amount: amountSats!,
-      feeRate: rate!,
+      amount: amountSats,
+      feeRate: rate,
       changeAddress: from.address,
     );
     return BitcoinPaymentPreview(

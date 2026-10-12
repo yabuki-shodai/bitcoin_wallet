@@ -1,7 +1,7 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
-import 'tx_input.dart';
-import 'tx_output.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/tx_input.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/tx_output.dart';
 
 part 'bitcoin_transaction.freezed.dart';
 

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../../crypto/bitcoin/bitcoin_wallet.dart';
-import 'address_delete_page.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_wallet.dart';
+import 'package:bitcoin_wallet/src/ui/pages/bitcoin/address_delete_page.dart';
 
 class BitcoinMenuPage extends StatelessWidget {
   const BitcoinMenuPage({super.key, required this.wallet});

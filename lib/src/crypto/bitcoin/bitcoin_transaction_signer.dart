@@ -6,9 +6,9 @@ import 'package:convert/convert.dart' as convert;
 import 'package:crypto/crypto.dart';
 import 'package:pointycastle/export.dart';
 
-import 'bitcoin_transaction_serializer.dart';
-import 'models/bitcoin_transaction.dart';
-import 'models/tx_input.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction_serializer.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_transaction.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/tx_input.dart';
 
 class BitcoinTransactionSigner {
   static const int sighashAll = 0x01;

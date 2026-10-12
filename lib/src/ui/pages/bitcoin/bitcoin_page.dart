@@ -2,16 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../../crypto/bitcoin/bitcoin_wallet.dart';
-import '../../../core/wallet/network.dart';
-import '../../../crypto/bitcoin/models/bitcoin_address.dart';
-import '../../../crypto/bitcoin/models/bitcoin_address_type.dart';
-import '../../widgets/address/address_list_tile.dart';
-import '../../widgets/address/address_qr_dialog.dart';
-import '../../widgets/address/address_list.dart';
-import '../../router/app_router.dart';
-import 'bitcoin_send_page.dart';
-import 'bitcoin_menu_page.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_wallet.dart';
+import 'package:bitcoin_wallet/src/core/wallet/network.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address_type.dart';
+import 'package:bitcoin_wallet/src/ui/widgets/address/address_list_tile.dart';
+import 'package:bitcoin_wallet/src/ui/widgets/address/address_qr_dialog.dart';
+import 'package:bitcoin_wallet/src/ui/widgets/address/address_list.dart';
+import 'package:bitcoin_wallet/src/ui/router/app_router.dart';
+import 'package:bitcoin_wallet/src/ui/pages/bitcoin/bitcoin_send_page.dart';
+import 'package:bitcoin_wallet/src/ui/pages/bitcoin/bitcoin_menu_page.dart';
 
 class BitcoinPage extends StatefulWidget {
   const BitcoinPage({super.key, required this.wallet});

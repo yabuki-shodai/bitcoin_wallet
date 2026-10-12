@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'models/bitcoin_transaction.dart';
-import 'models/tx_output.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_transaction.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/tx_output.dart';
 
 class BitcoinTransactionSerializer {
   const BitcoinTransactionSerializer();
