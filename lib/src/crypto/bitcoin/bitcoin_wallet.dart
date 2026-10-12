@@ -9,6 +9,8 @@ import 'package:bitcoin_wallet/src/crypto/bitcoin/repository/bitcoin_repository.
 import 'bitcoin_blockchain_client.dart';
 import 'bitcoin_payments.dart';
 import 'bitcoin_transaction_builder.dart';
+import 'models/bitcoin_balance.dart';
+import 'models/prepared_bitcoin_payment.dart';
 
 class BitcoinWallet implements Wallet<BitcoinAddress>, BitcoinPayments {
   final Network network;

@@ -3,12 +3,7 @@ import 'dart:typed_data';
 
 import 'package:pointycastle/export.dart';
 
-class KeyPair {
-  final Uint8List privateKey;
-  final Uint8List publicKey;
-
-  KeyPair({required this.privateKey, required this.publicKey});
-}
+import '../models/key_pair.dart';
 
 abstract class KeyPairGenerator {
   KeyPair generate();
@@ -30,8 +25,11 @@ class Secp256k1KeyPairGenerator implements KeyPairGenerator {
     } while (d == BigInt.zero || d >= curve.n);
 
     return KeyPair(
-      privateKey: privateKey,
-      publicKey: derivePublicKey(privateKey, compressed: false),
+      privateKey: Uint8List.fromList(privateKey).asUnmodifiableView(),
+      publicKey: derivePublicKey(
+        privateKey,
+        compressed: false,
+      ).asUnmodifiableView(),
     );
   }
 

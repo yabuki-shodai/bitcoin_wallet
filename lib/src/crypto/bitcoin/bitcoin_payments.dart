@@ -1,48 +1,6 @@
-import 'package:crypto/crypto.dart';
-import 'package:convert/convert.dart' as convert;
-
-import 'bitcoin_transaction.dart';
 import 'models/bitcoin_address.dart';
-import 'models/bitcoin_utxo.dart';
-
-class BitcoinBalance {
-  final int total;
-  final int confirmed;
-  final List<BitcoinUtxo> utxos;
-  const BitcoinBalance({
-    required this.total,
-    required this.confirmed,
-    this.utxos = const [],
-  });
-}
-
-class PreparedBitcoinPayment {
-  final String rawHex;
-  final String txid;
-  final String toAddress;
-  final int amount;
-  final int fee;
-  final int virtualSize;
-
-  PreparedBitcoinPayment({
-    required BitcoinTransaction transaction,
-    required this.toAddress,
-    required this.amount,
-    required this.fee,
-  }) : rawHex = convert.hex.encode(transaction.serialize()),
-       txid = convert.hex.encode(
-         sha256
-             .convert(
-               sha256
-                   .convert(transaction.serialize(includeWitness: false))
-                   .bytes,
-             )
-             .bytes
-             .reversed
-             .toList(),
-       ),
-       virtualSize = transaction.virtualSize;
-}
+import 'models/bitcoin_balance.dart';
+import 'models/prepared_bitcoin_payment.dart';
 
 abstract class BitcoinPayments {
   Future<BitcoinBalance> getBalance(BitcoinAddress address);

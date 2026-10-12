@@ -2,22 +2,7 @@ import 'package:convert/convert.dart' as convert;
 import 'dart:typed_data';
 
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_utxo.dart';
-
-class TxInput {
-  final Uint8List txid;
-  final int vout;
-  Uint8List scriptSig;
-  List<Uint8List>? witness;
-  final int sequence;
-
-  TxInput({
-    required this.txid,
-    required this.vout,
-    Uint8List? scriptSig,
-    this.witness,
-    this.sequence = 0xffffffff,
-  }) : scriptSig = scriptSig ?? Uint8List(0);
-}
+import 'models/tx_input.dart';
 
 class BitcoinInputBuilder {
   TxInput build(BitcoinUtxo utxo) {
@@ -30,7 +15,9 @@ class BitcoinInputBuilder {
     }
 
     return TxInput(
-      txid: Uint8List.fromList(decodedTxid.reversed.toList()),
+      txid: Uint8List.fromList(
+        decodedTxid.reversed.toList(),
+      ).asUnmodifiableView(),
       vout: utxo.vout,
     );
   }

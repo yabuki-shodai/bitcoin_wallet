@@ -3,13 +3,7 @@ import 'dart:typed_data';
 import 'package:bitcoin_wallet/src/core/wallet/network.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_address_decoder.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address_type.dart';
-
-class TxOutput {
-  final int value; // satoshi
-  final Uint8List scriptPubKey;
-
-  TxOutput({required this.value, required this.scriptPubKey});
-}
+import 'models/tx_output.dart';
 
 class BitcoinOutputBuilder {
   final Network network;
@@ -40,6 +34,9 @@ class BitcoinOutputBuilder {
       _ => throw UnsupportedError('未対応のアドレスタイプです: ${decoded.type}'),
     };
 
-    return TxOutput(value: amount, scriptPubKey: scriptPubKey);
+    return TxOutput(
+      value: amount,
+      scriptPubKey: scriptPubKey.asUnmodifiableView(),
+    );
   }
 }

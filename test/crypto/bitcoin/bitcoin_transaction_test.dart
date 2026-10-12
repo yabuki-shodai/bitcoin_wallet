@@ -3,8 +3,9 @@ import 'dart:typed_data';
 import 'package:bitcoin_wallet/src/core/wallet/network.dart';
 import 'package:bitcoin_wallet/src/core/key_pair/secp256/secp256_key_generator.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_input_builder.dart';
-import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_output_builder.dart';
-import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_transaction.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/tx_input.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/tx_output.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction_builder.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction_signer.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_utxo.dart';
@@ -234,7 +235,7 @@ void main() {
               utxo.scriptPubkey.sublist(2),
             );
 
-      signer.sign(
+      final signedTransaction = signer.sign(
         transaction: transaction,
         utxos: [utxo],
         privateKey: privateKey,
@@ -243,11 +244,11 @@ void main() {
       );
 
       final signature = script.startsWith('76')
-          ? transaction.inputs.single.scriptSig.sublist(
+          ? signedTransaction.inputs.single.scriptSig.sublist(
               1,
-              1 + transaction.inputs.single.scriptSig[0],
+              1 + signedTransaction.inputs.single.scriptSig[0],
             )
-          : transaction.inputs.single.witness!.first;
+          : signedTransaction.inputs.single.witness!.first;
       expect(signature.last, 0x01);
       expect(signature[0], 0x30);
       final rLength = signature[3];
