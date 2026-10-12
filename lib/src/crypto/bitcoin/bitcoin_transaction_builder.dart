@@ -5,11 +5,16 @@ import 'package:bitcoin_wallet/src/core/key_pair/secp256/secp256_key_generator.d
 import 'package:bitcoin_wallet/src/core/wallet/network.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_input_builder.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_output_builder.dart';
-import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction_signer.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address_type.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_utxo.dart';
-import 'bitcoin_payments.dart';
+import 'package:convert/convert.dart' as convert;
+import 'package:crypto/crypto.dart';
+
+import 'bitcoin_transaction_serializer.dart';
+import 'models/bitcoin_transaction.dart';
+import 'models/prepared_bitcoin_payment.dart';
+import 'models/tx_output.dart';
 
 class BitcoinTransactionBuilder implements TransactionBuilder {
   static const int _minimumChange = 546;
@@ -113,12 +118,12 @@ class BitcoinTransactionBuilder implements TransactionBuilder {
     }
 
     final inputBuilder = BitcoinInputBuilder();
-    final transaction = BitcoinTransaction(
-      inputs: selected.map(inputBuilder.build).toList(),
-      outputs: outputs,
+    final unsignedTransaction = BitcoinTransaction(
+      inputs: List.unmodifiable(selected.map(inputBuilder.build)),
+      outputs: List.unmodifiable(outputs),
     );
-    BitcoinTransactionSigner().sign(
-      transaction: transaction,
+    final transaction = BitcoinTransactionSigner().sign(
+      transaction: unsignedTransaction,
       utxos: selected,
       privateKey: privateKey,
       compressedPublicKey: compressedPublicKey,
@@ -127,12 +132,28 @@ class BitcoinTransactionBuilder implements TransactionBuilder {
 
     final actualFee =
         inputTotal - outputs.fold<int>(0, (sum, output) => sum + output.value);
-    if (actualFee < transaction.virtualSize * feeRate) {
+    const serializer = BitcoinTransactionSerializer();
+    final virtualSize = serializer.virtualSize(transaction);
+    if (actualFee < virtualSize * feeRate) {
       throw StateError('署名後の取引手数料が指定レートを下回りました');
     }
 
     return PreparedBitcoinPayment(
-      transaction: transaction,
+      rawHex: convert.hex.encode(serializer.serialize(transaction)),
+      txid: convert.hex.encode(
+        sha256
+            .convert(
+              sha256
+                  .convert(
+                    serializer.serialize(transaction, includeWitness: false),
+                  )
+                  .bytes,
+            )
+            .bytes
+            .reversed
+            .toList(),
+      ),
+      virtualSize: virtualSize,
       toAddress: toAddress,
       amount: amount,
       fee: actualFee,

@@ -1,38 +1,32 @@
 import 'dart:typed_data';
 
-import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_input_builder.dart';
-import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_output_builder.dart';
+import 'models/bitcoin_transaction.dart';
+import 'models/tx_output.dart';
 
-class BitcoinTransaction {
-  final int version;
-  final List<TxInput> inputs;
-  final List<TxOutput> outputs;
-  final int lockTime;
+class BitcoinTransactionSerializer {
+  const BitcoinTransactionSerializer();
 
-  BitcoinTransaction({
-    required this.inputs,
-    required this.outputs,
-    this.version = 2,
-    this.lockTime = 0,
-  });
-
-  bool get hasWitness =>
-      inputs.any((input) => input.witness?.isNotEmpty ?? false);
-
-  int get virtualSize {
-    final baseSize = serialize(includeWitness: false).length;
-    final totalSize = serialize().length;
+  int virtualSize(BitcoinTransaction transaction) {
+    final baseSize = serialize(transaction, includeWitness: false).length;
+    final totalSize = serialize(transaction).length;
     return (baseSize * 3 + totalSize + 3) ~/ 4;
   }
 
-  Uint8List serialize({bool includeWitness = true}) {
+  Uint8List serialize(
+    BitcoinTransaction transaction, {
+    bool includeWitness = true,
+  }) {
+    final inputs = transaction.inputs;
+    final outputs = transaction.outputs;
     if (inputs.isEmpty || outputs.isEmpty) {
       throw StateError('取引にはInputとOutputが必要です');
     }
 
-    final useWitness = includeWitness && hasWitness;
+    final useWitness =
+        includeWitness &&
+        inputs.any((input) => input.witness?.isNotEmpty ?? false);
     return Uint8List.fromList([
-      ...uintLittleEndian(version, 4),
+      ...uintLittleEndian(transaction.version, 4),
       if (useWitness) ...[0x00, 0x01],
       ...compactSize(inputs.length),
       for (final input in inputs) ...[
@@ -52,7 +46,7 @@ class BitcoinTransaction {
             ...item,
           ],
         ],
-      ...uintLittleEndian(lockTime, 4),
+      ...uintLittleEndian(transaction.lockTime, 4),
     ]);
   }
 }

@@ -6,6 +6,7 @@ import '../../../crypto/bitcoin/bitcoin_address_decoder.dart';
 import '../../../crypto/bitcoin/bitcoin_blockchain_client.dart';
 import '../../../crypto/bitcoin/bitcoin_payments.dart';
 import '../../../crypto/bitcoin/models/bitcoin_address.dart';
+import '../../../crypto/bitcoin/models/prepared_bitcoin_payment.dart';
 
 class BitcoinSendPage extends StatefulWidget {
   const BitcoinSendPage({

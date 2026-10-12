@@ -1,16 +1,19 @@
 import 'dart:typed_data';
 
-import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address_type.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_utxo.dart';
 import 'package:convert/convert.dart' as convert;
 import 'package:crypto/crypto.dart';
 import 'package:pointycastle/export.dart';
 
+import 'bitcoin_transaction_serializer.dart';
+import 'models/bitcoin_transaction.dart';
+import 'models/tx_input.dart';
+
 class BitcoinTransactionSigner {
   static const int sighashAll = 0x01;
 
-  void sign({
+  BitcoinTransaction sign({
     required BitcoinTransaction transaction,
     required List<BitcoinUtxo> utxos,
     required Uint8List privateKey,
@@ -21,7 +24,9 @@ class BitcoinTransactionSigner {
       throw ArgumentError('InputとUTXOの数が一致しません');
     }
 
+    final signedInputs = <TxInput>[];
     for (var index = 0; index < utxos.length; index++) {
+      final input = transaction.inputs[index];
       final utxo = utxos[index];
       final type = scriptType(utxo.scriptPubkey);
       final publicKey = matchingPublicKey(
@@ -46,19 +51,34 @@ class BitcoinTransactionSigner {
       final signature = Uint8List.fromList([
         ..._signEcdsa(digest, privateKey),
         sighashAll,
-      ]);
+      ]).asUnmodifiableView();
+      final txid = Uint8List.fromList(input.txid).asUnmodifiableView();
 
       if (type == BitcoinAddressType.p2pkh) {
-        transaction.inputs[index].scriptSig = Uint8List.fromList([
-          signature.length,
-          ...signature,
-          publicKey.length,
-          ...publicKey,
-        ]);
+        signedInputs.add(
+          input.copyWith(
+            txid: txid,
+            scriptSig: List<int>.unmodifiable([
+              signature.length,
+              ...signature,
+              publicKey.length,
+              ...publicKey,
+            ]),
+          ),
+        );
       } else {
-        transaction.inputs[index].witness = [signature, publicKey];
+        signedInputs.add(
+          input.copyWith(
+            txid: txid,
+            witness: List<Uint8List>.unmodifiable([
+              signature,
+              Uint8List.fromList(publicKey).asUnmodifiableView(),
+            ]),
+          ),
+        );
       }
     }
+    return transaction.copyWith(inputs: List.unmodifiable(signedInputs));
   }
 
   Uint8List signatureHashLegacy(
