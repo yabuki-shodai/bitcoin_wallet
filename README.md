@@ -32,3 +32,7 @@ Stop the app and run `flutter run` again to apply the change.
 - Private keys are stored separately using `flutter_secure_storage`, under the key `bitcoin:privateKey:<address>`.
 
 The storage backend and physical location depend on the target platform.
+
+## License
+
+Licensed under the MIT License. See [LICENSE](LICENSE).
