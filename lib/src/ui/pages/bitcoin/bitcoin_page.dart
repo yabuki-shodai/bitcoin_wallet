@@ -13,6 +13,7 @@ import '../../../crypto/bitcoin/bitcoin_payments.dart';
 import '../../../crypto/bitcoin/bitcoin_blockchain_client.dart';
 import '../../../core/wallet/network.dart';
 import 'bitcoin_send_page.dart';
+import 'bitcoin_menu_page.dart';
 
 class BitcoinPage extends StatefulWidget {
   const BitcoinPage({
@@ -36,6 +37,18 @@ class _BitcoinPageState extends State<BitcoinPage> {
   bool _creating = false;
   String? _error;
   bool _sending = false;
+  bool _openingMenu = false;
+
+  Future<void> _showMenu() async {
+    if (_openingMenu) return;
+    setState(() => _openingMenu = true);
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => BitcoinMenuPage(wallet: widget.wallet)),
+    );
+    if (!mounted) return;
+    setState(() => _openingMenu = false);
+    await _loadAddresses();
+  }
 
   Future<void> _showSend(BitcoinAddress address) async {
     if (_sending || widget.payments == null) return;
@@ -186,6 +199,13 @@ class _BitcoinPageState extends State<BitcoinPage> {
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 68,
+        actions: [
+          IconButton(
+            tooltip: 'メニュー',
+            onPressed: _openingMenu || _creating ? null : _showMenu,
+            icon: const Icon(Icons.more_vert),
+          ),
+        ],
         title: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
