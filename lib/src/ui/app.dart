@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../crypto/bitcoin/bitcoin_wallet.dart';
-import 'router/app_router.dart';
-import 'theme/app_theme.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_wallet.dart';
+import 'package:bitcoin_wallet/src/ui/router/app_router.dart';
+import 'package:bitcoin_wallet/src/ui/theme/app_theme.dart';
 
 class App extends StatelessWidget {
   const App({super.key, required this.bitcoinWallet});

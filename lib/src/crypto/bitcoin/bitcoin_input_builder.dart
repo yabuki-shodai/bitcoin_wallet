@@ -2,7 +2,7 @@ import 'package:convert/convert.dart' as convert;
 import 'dart:typed_data';
 
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_utxo.dart';
-import 'models/tx_input.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/tx_input.dart';
 
 class BitcoinInputBuilder {
   TxInput build(BitcoinUtxo utxo) {

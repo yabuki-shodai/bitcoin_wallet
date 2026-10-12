@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import '../../../crypto/bitcoin/bitcoin_payments.dart';
-import '../../../crypto/bitcoin/models/bitcoin_balance.dart';
-import 'address_rename_dialog.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_balance_summary.dart';
+import 'package:bitcoin_wallet/src/ui/widgets/address/address_rename_dialog.dart';
 
 class AddressQrDialog extends StatefulWidget {
   const AddressQrDialog({
@@ -22,14 +21,14 @@ class AddressQrDialog extends StatefulWidget {
   final Future<void> Function(String)? onRename;
   final VoidCallback? onCopy;
   final VoidCallback? onOpenExplorer;
-  final Future<BitcoinBalance> Function()? loadBalance;
+  final Future<BitcoinBalanceSummary> Function()? loadBalance;
 
   @override
   State<AddressQrDialog> createState() => _AddressQrDialogState();
 }
 
 class _AddressQrDialogState extends State<AddressQrDialog> {
-  Future<BitcoinBalance>? _balance;
+  Future<BitcoinBalanceSummary>? _balance;
   late String _name;
 
   @override
@@ -51,12 +50,14 @@ class _AddressQrDialogState extends State<AddressQrDialog> {
   }
 
   @override
-  Widget build(BuildContext context) =>
-      FutureBuilder<BitcoinBalance>(future: _balance, builder: _buildDialog);
+  Widget build(BuildContext context) => FutureBuilder<BitcoinBalanceSummary>(
+    future: _balance,
+    builder: _buildDialog,
+  );
 
   Widget _buildDialog(
     BuildContext context,
-    AsyncSnapshot<BitcoinBalance> snapshot,
+    AsyncSnapshot<BitcoinBalanceSummary> snapshot,
   ) {
     final theme = Theme.of(context);
     final displayName = _name.trim().isEmpty ? '名前なし' : _name;
@@ -114,7 +115,7 @@ class _AddressQrDialogState extends State<AddressQrDialog> {
                       child: const Text('残高を再取得'),
                     ),
                   ] else if (balance != null)
-                    Text('残高: ${formatBitcoin(balance.total)} BTC'),
+                    Text('残高: ${balance.totalText}'),
                 ],
                 const SizedBox(height: 20),
                 Center(
@@ -201,7 +202,7 @@ class _AddressQrDialogState extends State<AddressQrDialog> {
                               children: [
                                 Expanded(
                                   child: Text(
-                                    '${formatBitcoin(utxo.value)} BTC',
+                                    utxo.valueText,
                                     style: theme.textTheme.titleMedium,
                                   ),
                                 ),

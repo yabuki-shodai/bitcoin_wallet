@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../crypto/bitcoin/models/bitcoin_address.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address.dart';
 
 class AddressDeleteDialog extends StatefulWidget {
   const AddressDeleteDialog({

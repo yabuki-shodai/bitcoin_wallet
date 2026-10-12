@@ -11,10 +11,10 @@ import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_utxo.dart';
 import 'package:convert/convert.dart' as convert;
 import 'package:crypto/crypto.dart';
 
-import 'bitcoin_transaction_serializer.dart';
-import 'models/bitcoin_transaction.dart';
-import 'models/prepared_bitcoin_payment.dart';
-import 'models/tx_output.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction_serializer.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_transaction.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/prepared_bitcoin_payment.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/tx_output.dart';
 
 class BitcoinTransactionBuilder implements TransactionBuilder {
   static const int _minimumChange = 546;

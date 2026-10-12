@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:pointycastle/export.dart';
 
-import '../models/key_pair.dart';
+import 'package:bitcoin_wallet/src/core/key_pair/models/key_pair.dart';
 
 abstract class KeyPairGenerator {
   KeyPair generate();

@@ -1,19 +1,17 @@
 import 'package:flutter/material.dart';
 
-import '../../crypto/bitcoin/bitcoin_wallet.dart';
-import '../../crypto/bitcoin/models/bitcoin_address.dart';
-import '../pages/bitcoin/address_create_page.dart';
-import '../pages/bitcoin/bitcoin_page.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_wallet.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address.dart';
+import 'package:bitcoin_wallet/src/ui/pages/bitcoin/address_create_page.dart';
+import 'package:bitcoin_wallet/src/ui/pages/bitcoin/bitcoin_page.dart';
 
 class AppRouter {
   static const bitcoin = '/bitcoin';
   static const bitcoinCreate = '/bitcoin/addresses/new';
 
   static Map<String, WidgetBuilder> routes(BitcoinWallet wallet) => {
-    Navigator.defaultRouteName: (_) =>
-        BitcoinPage(wallet: wallet, payments: wallet, network: wallet.network),
-    bitcoin: (_) =>
-        BitcoinPage(wallet: wallet, payments: wallet, network: wallet.network),
+    Navigator.defaultRouteName: (_) => BitcoinPage(wallet: wallet),
+    bitcoin: (_) => BitcoinPage(wallet: wallet),
   };
 
   static Route<BitcoinAddress>? createRoute(

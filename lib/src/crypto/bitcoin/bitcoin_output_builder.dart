@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:bitcoin_wallet/src/core/wallet/network.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_address_decoder.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address_type.dart';
-import 'models/tx_output.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/tx_output.dart';
 
 class BitcoinOutputBuilder {
   final Network network;

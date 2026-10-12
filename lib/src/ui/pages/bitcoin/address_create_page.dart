@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/wallet/network.dart';
-import '../../../crypto/bitcoin/models/bitcoin_address.dart';
-import '../../../crypto/bitcoin/models/bitcoin_address_type.dart';
-import '../../widgets/address/address_type_card.dart';
+import 'package:bitcoin_wallet/src/core/wallet/network.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address_type.dart';
+import 'package:bitcoin_wallet/src/ui/widgets/address/address_type_card.dart';
 
 class AddressCreatePage extends StatefulWidget {
   const AddressCreatePage({
