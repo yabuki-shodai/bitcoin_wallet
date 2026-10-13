@@ -10,6 +10,9 @@ class PrivateKeyStore {
 
   String _key(String address) => '$asset:privateKey:$address';
 
+  Future<void> deletePrivateKey(String address) =>
+      _secureStore.delete(key: _key(address));
+
   Future<void> savePrivateKey(String address, Uint8List privateKey) async {
     await _secureStore.save(
       key: _key(address),

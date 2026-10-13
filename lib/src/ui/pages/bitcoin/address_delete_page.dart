@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_wallet.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address_type.dart';
-import 'package:bitcoin_wallet/src/ui/widgets/address/address_delete_dialog.dart';
 import 'package:bitcoin_wallet/src/ui/widgets/address/address_list.dart';
 import 'package:bitcoin_wallet/src/ui/widgets/address/address_list_tile.dart';
 
@@ -20,7 +19,7 @@ class AddressDeletePage extends StatefulWidget {
 class _AddressDeletePageState extends State<AddressDeletePage> {
   List<BitcoinAddress> _addresses = [];
   bool _loading = true;
-  bool _confirming = false;
+  bool _deleting = false;
   String? _error;
 
   @override
@@ -50,26 +49,50 @@ class _AddressDeletePageState extends State<AddressDeletePage> {
     }
   }
 
-  Future<void> _confirmDelete(BitcoinAddress address) async {
-    if (_confirming) return;
-    _confirming = true;
-    final deleted = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AddressDeleteDialog(
-        address: address,
-        onDelete: () => widget.wallet.deleteAddress(address),
-      ),
-    );
-    if (!mounted) return;
-    _confirming = false;
-    if (deleted != true) return;
-    setState(() {
-      _addresses.removeWhere((item) => item.address == address.address);
-    });
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('アドレスを削除しました')));
+  Future<void> _deleteAddress(BitcoinAddress address) async {
+    if (_deleting) return;
+    setState(() => _deleting = true);
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('削除しますか？'),
+          content: const Text('このアドレスと秘密鍵を削除します。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('キャンセル'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+              ),
+              child: const Text('削除'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || confirmed != true) return;
+      await widget.wallet.deleteAddress(address);
+      if (!mounted) return;
+      setState(() {
+        _addresses.removeWhere((item) => item.address == address.address);
+      });
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('アドレスと秘密鍵を削除しました')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('削除できませんでした。もう一度お試しください。')),
+        );
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
   }
 
   Future<void> _copyAddress(String address) async {
@@ -133,7 +156,7 @@ class _AddressDeletePageState extends State<AddressDeletePage> {
           name: address.displayName,
           address: address.address,
           format: _formatLabel(address.type),
-          onTap: () => _confirmDelete(address),
+          onTap: () => _deleteAddress(address),
           onCopy: () => _copyAddress(address.address),
         );
       },

@@ -200,6 +200,16 @@ class BitcoinWallet implements Wallet<BitcoinAddress>, BitcoinPayments {
 
   @override
   Future<void> deleteAddress(BitcoinAddress address) async {
-    await repostory.deleteAddress(address);
+    // Keep the address accessible if secure storage refuses deletion.
+    final privateKey = await store.readPrivateKey(address.address);
+    await store.deletePrivateKey(address.address);
+    try {
+      await repostory.deleteAddress(address);
+    } catch (_) {
+      if (privateKey != null) {
+        await store.savePrivateKey(address.address, privateKey);
+      }
+      rethrow;
+    }
   }
 }

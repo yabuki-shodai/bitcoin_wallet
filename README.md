@@ -30,6 +30,7 @@ Stop the app and run `flutter run` again to apply the change.
 
 - Address information (display name, address, network, public key, and address type) is stored locally as JSON in the Hive box named `bitcoin_address`.
 - Private keys are stored separately using `flutter_secure_storage`, under the key `bitcoin:privateKey:<address>`.
+- Selecting an address on the deletion page opens a confirmation dialog. Confirming deletion removes both its address information and private key. Without a backup, funds sent to that address can become inaccessible.
 
 The storage backend and physical location depend on the target platform.
 
