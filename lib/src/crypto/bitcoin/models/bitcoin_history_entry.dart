@@ -1,16 +1,18 @@
-/// A transaction's effect on the balance of one address, including fees.
-class BitcoinHistoryEntry {
-  const BitcoinHistoryEntry({
-    required this.txid,
-    required this.balanceChange,
-    required this.confirmed,
-    this.confirmedAt,
-  });
+import 'package:freezed_annotation/freezed_annotation.dart';
 
-  final String txid;
-  final int balanceChange;
-  final bool confirmed;
-  final DateTime? confirmedAt;
+part 'bitcoin_history_entry.freezed.dart';
+
+/// A transaction's effect on the balance of one address, including fees.
+@freezed
+abstract class BitcoinHistoryEntry with _$BitcoinHistoryEntry {
+  const BitcoinHistoryEntry._();
+
+  const factory BitcoinHistoryEntry({
+    required String txid,
+    required int balanceChange,
+    required bool confirmed,
+    DateTime? confirmedAt,
+  }) = _BitcoinHistoryEntry;
 
   String get direction => balanceChange > 0
       ? '入金'
