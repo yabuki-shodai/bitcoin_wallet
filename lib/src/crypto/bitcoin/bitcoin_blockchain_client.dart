@@ -49,10 +49,7 @@ class BitcoinBlockchainClient implements BlockchainClient {
       final data = jsonDecode(response.body) as List<dynamic>;
       return data
           .map(
-            (item) => BitcoinHistoryEntry.fromJson(
-              item as Map<String, dynamic>,
-              address,
-            ),
+            (item) => _parseHistoryEntry(item as Map<String, dynamic>, address),
           )
           .toList();
     }
@@ -70,6 +67,37 @@ class BitcoinBlockchainClient implements BlockchainClient {
       }
     }
     return List.unmodifiable(entries.values);
+  }
+
+  BitcoinHistoryEntry _parseHistoryEntry(
+    Map<String, dynamic> json,
+    String address,
+  ) {
+    var received = 0;
+    var spent = 0;
+    for (final output in json['vout'] as List<dynamic>) {
+      if (output['scriptpubkey_address'] == address) {
+        received += output['value'] as int;
+      }
+    }
+    for (final input in json['vin'] as List<dynamic>) {
+      final previousOutput = input['prevout'];
+      if (previousOutput != null &&
+          previousOutput['scriptpubkey_address'] == address) {
+        spent += previousOutput['value'] as int;
+      }
+    }
+    final status = json['status'] as Map<String, dynamic>;
+    final confirmed = status['confirmed'] as bool;
+    final blockTime = status['block_time'] as int?;
+    return BitcoinHistoryEntry(
+      txid: json['txid'] as String,
+      balanceChange: received - spent,
+      confirmed: confirmed,
+      confirmedAt: confirmed && blockTime != null
+          ? DateTime.fromMillisecondsSinceEpoch(blockTime * 1000, isUtc: true)
+          : null,
+    );
   }
 
   @override

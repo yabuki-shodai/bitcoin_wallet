@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_history_entry.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_history_summary.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_balance_summary.dart';
 import 'package:bitcoin_wallet/src/ui/widgets/address/address_rename_dialog.dart';
@@ -24,7 +24,7 @@ class AddressQrDialog extends StatefulWidget {
   final VoidCallback? onCopy;
   final VoidCallback? onOpenExplorer;
   final Future<BitcoinBalanceSummary> Function()? loadBalance;
-  final Future<List<BitcoinHistoryEntry>> Function()? loadHistory;
+  final Future<List<BitcoinHistorySummary>> Function()? loadHistory;
 
   @override
   State<AddressQrDialog> createState() => _AddressQrDialogState();
@@ -33,7 +33,7 @@ class AddressQrDialog extends StatefulWidget {
 class _AddressQrDialogState extends State<AddressQrDialog> {
   Future<BitcoinBalanceSummary>? _balance;
   late String _name;
-  List<BitcoinHistoryEntry>? _history;
+  List<BitcoinHistorySummary>? _history;
   bool _historyLoading = false;
   bool _historyError = false;
   int _selectedTab = 0;
