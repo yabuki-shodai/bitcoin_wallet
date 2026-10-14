@@ -4,6 +4,7 @@ import 'package:bitcoin_wallet/src/core/wallet/index.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/index.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/index.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/repository/index.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_history_entry.dart';
 
 class BitcoinWallet implements Wallet<BitcoinAddress>, BitcoinPayments {
   final Network network;
@@ -54,6 +55,13 @@ class BitcoinWallet implements Wallet<BitcoinAddress>, BitcoinPayments {
 
   void _checkNetwork(BitcoinAddress address) {
     if (address.network != network) throw ArgumentError('アドレスのネットワークが一致しません');
+  }
+
+  Future<List<BitcoinHistoryEntry>> getTransactionHistory(
+    BitcoinAddress address,
+  ) {
+    _checkNetwork(address);
+    return blockchainClient.getTransactionHistory(address.address);
   }
 
   @override

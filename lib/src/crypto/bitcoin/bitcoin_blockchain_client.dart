@@ -5,6 +5,7 @@ import 'package:bitcoin_wallet/src/core/api/blockchain_client.dart';
 import 'package:bitcoin_wallet/src/core/wallet/network.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_address_decoder.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_utxo.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_history_entry.dart';
 import 'package:convert/convert.dart' as convert;
 import 'package:http/http.dart' as http;
 
@@ -26,6 +27,50 @@ class BitcoinBlockchainClient implements BlockchainClient {
   Uri _apiUrl(String path) => Uri.parse(_apiBaseUrl).resolve(path);
 
   void close() => _client.close();
+
+  Future<List<BitcoinHistoryEntry>> getTransactionHistory(
+    String address,
+  ) async {
+    if (BitcoinAddressDecoder().decode(address).network != network) {
+      throw ArgumentError.value(address, 'address', 'クライアントとネットワークが一致しません');
+    }
+
+    Future<List<BitcoinHistoryEntry>> fetch(String path) async {
+      final url = _apiUrl(path);
+      final response = await _client
+          .get(url)
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode != 200) {
+        throw http.ClientException(
+          '取引履歴取得に失敗しました (HTTP ${response.statusCode})',
+          url,
+        );
+      }
+      final data = jsonDecode(response.body) as List<dynamic>;
+      return data
+          .map(
+            (item) => BitcoinHistoryEntry.fromJson(
+              item as Map<String, dynamic>,
+              address,
+            ),
+          )
+          .toList();
+    }
+
+    final firstPage = await fetch('address/$address/txs');
+    final entries = {for (final entry in firstPage) entry.txid: entry};
+    var confirmed = firstPage.where((entry) => entry.confirmed).toList();
+    final cursors = <String>{};
+    while (confirmed.length >= 25) {
+      final cursor = confirmed.last.txid;
+      if (!cursors.add(cursor)) throw StateError('取引履歴の取得が進みませんでした');
+      confirmed = await fetch('address/$address/txs/chain/$cursor');
+      for (final entry in confirmed) {
+        entries[entry.txid] = entry;
+      }
+    }
+    return List.unmodifiable(entries.values);
+  }
 
   @override
   Future<String> broadcastTransaction(String signedTransactionHex) async {
