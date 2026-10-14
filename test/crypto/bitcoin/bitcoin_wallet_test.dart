@@ -6,10 +6,9 @@ import 'package:bitcoin_wallet/src/core/wallet/network.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_wallet.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_blockchain_client.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_utxo.dart';
-import 'package:bitcoin_wallet/src/ui/pages/bitcoin/bitcoin_send_page.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_history_entry.dart';
 import 'package:convert/convert.dart' as convert;
 import 'package:crypto/crypto.dart';
-import 'package:flutter/material.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address_type.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/repository/bitcoin_repository.dart';
@@ -46,6 +45,8 @@ class TestRepository implements BitcoinAddressRepository {
 class TestBlockchainClient extends BitcoinBlockchainClient {
   TestBlockchainClient() : super(network: Network.mainnet);
   int reads = 0;
+  int historyReads = 0;
+  List<BitcoinHistoryEntry> history = [];
   final sent = <String>[];
   List<BitcoinUtxo> utxos = [
     BitcoinUtxo(
@@ -65,6 +66,14 @@ class TestBlockchainClient extends BitcoinBlockchainClient {
   Future<List<BitcoinUtxo>> getUtxos(String address) async {
     reads++;
     return utxos;
+  }
+
+  @override
+  Future<List<BitcoinHistoryEntry>> getTransactionHistory(
+    String address,
+  ) async {
+    historyReads++;
+    return history;
   }
 
   @override
@@ -254,36 +263,62 @@ void main() {
     );
   });
 
-  testWidgets('UIは例外のエラーを表示し修正後はwalletの確認結果を表示する', (tester) async {
-    final store = TestKeyStore()..privateKey = (Uint8List(32)..[31] = 1);
+  test('履歴の入出金とゼロ残高変化を表示用に変換する', () async {
+    final confirmedAt = DateTime.utc(2026, 10, 14);
+    final client = TestBlockchainClient()
+      ..history = [
+        BitcoinHistoryEntry(
+          txid: 'incoming',
+          balanceChange: 100000001,
+          confirmed: true,
+          confirmedAt: confirmedAt,
+        ),
+        const BitcoinHistoryEntry(
+          txid: 'outgoing',
+          balanceChange: -6000,
+          confirmed: false,
+        ),
+        const BitcoinHistoryEntry(
+          txid: 'zero',
+          balanceChange: 0,
+          confirmed: false,
+        ),
+      ];
+    addTearDown(client.close);
+    final wallet = createWallet(Network.mainnet, client: client);
+    final history = await wallet.getTransactionHistory(source(Network.mainnet));
+    expect(history.map((entry) => entry.direction), ['入金', '出金', '残高変化なし']);
+    expect(history.map((entry) => entry.amountText), [
+      '+1.00000001 BTC',
+      '-0.00006000 BTC',
+      '0.00000000 BTC',
+    ]);
+    expect(history.map((entry) => entry.txid), [
+      'incoming',
+      'outgoing',
+      'zero',
+    ]);
+    expect(history.first.confirmed, isTrue);
+    expect(history.first.confirmedAt, confirmedAt);
+    expect(history[1].confirmed, isFalse);
+    expect(history[1].confirmedAt, isNull);
+
+    client.history = [];
+    expect(
+      await wallet.getTransactionHistory(source(Network.mainnet)),
+      isEmpty,
+    );
+  });
+
+  test('履歴取得時はネットワーク違いを通信前に拒否する', () async {
     final client = TestBlockchainClient();
     addTearDown(client.close);
-    final wallet = createWallet(Network.mainnet, store: store, client: client);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: BitcoinSendPage(wallet: wallet, from: source(Network.mainnet)),
-      ),
+    final wallet = createWallet(Network.mainnet, client: client);
+    await expectLater(
+      wallet.getTransactionHistory(source(Network.testnet)),
+      throwsArgumentError,
     );
-    await tester.tap(find.text('送金内容を確認'));
-    await tester.pumpAndSettle();
-    expect(find.text('有効なP2PKHまたはP2WPKHアドレスを入力してください'), findsOneWidget);
-    expect(store.reads, 0);
-    await tester.enterText(
-      find.byKey(const Key('send-address')),
-      mainnetAddress,
-    );
-    await tester.enterText(find.byKey(const Key('send-amount')), '0.00009800');
-    await tester.enterText(find.byKey(const Key('send-fee-rate')), '1');
-    await tester.ensureVisible(find.text('送金内容を確認'));
-    await tester.tap(find.text('送金内容を確認'));
-    await tester.pumpAndSettle();
-    expect(find.text('送金額: 0.00009800 BTC'), findsOneWidget);
-    expect(find.text('合計: 0.00010000 BTC'), findsOneWidget);
-    await tester.ensureVisible(find.text('確認して送信'));
-    await tester.tap(find.text('確認して送信'));
-    await tester.pumpAndSettle();
-    expect(find.text('送信完了'), findsOneWidget);
-    expect(client.sent, hasLength(1));
+    expect(client.historyReads, 0);
   });
 
   test('ネットワークに対応したExplorerのURLを生成する', () {

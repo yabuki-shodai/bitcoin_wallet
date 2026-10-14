@@ -4,7 +4,6 @@ import 'package:bitcoin_wallet/src/core/wallet/index.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/index.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/index.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/repository/index.dart';
-import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_history_entry.dart';
 
 class BitcoinWallet implements Wallet<BitcoinAddress>, BitcoinPayments {
   final Network network;
@@ -57,11 +56,32 @@ class BitcoinWallet implements Wallet<BitcoinAddress>, BitcoinPayments {
     if (address.network != network) throw ArgumentError('アドレスのネットワークが一致しません');
   }
 
-  Future<List<BitcoinHistoryEntry>> getTransactionHistory(
+  Future<List<BitcoinHistorySummary>> getTransactionHistory(
     BitcoinAddress address,
-  ) {
+  ) async {
     _checkNetwork(address);
-    return blockchainClient.getTransactionHistory(address.address);
+    final entries = await blockchainClient.getTransactionHistory(
+      address.address,
+    );
+    return [
+      for (final entry in entries)
+        BitcoinHistorySummary(
+          txid: entry.txid,
+          direction: switch (entry.balanceChange) {
+            > 0 => '入金',
+            < 0 => '出金',
+            _ => '残高変化なし',
+          },
+          amountText:
+              '${switch (entry.balanceChange) {
+                > 0 => '+',
+                < 0 => '-',
+                _ => '',
+              }}${_formatBitcoin(entry.balanceChange.abs())} BTC',
+          confirmed: entry.confirmed,
+          confirmedAt: entry.confirmedAt,
+        ),
+    ];
   }
 
   @override

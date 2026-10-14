@@ -86,8 +86,6 @@ void main() {
     addTearDown(client.close);
     final entry = (await client.getTransactionHistory(mainnetAddress)).single;
     expect(entry.balanceChange, -6000);
-    expect(entry.direction, '出金');
-    expect(entry.amountText, '-0.00006000 BTC');
   });
 
   test('testnet4の空の履歴を取得しネットワーク違いは通信しない', () async {
