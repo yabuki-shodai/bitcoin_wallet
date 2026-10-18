@@ -53,16 +53,9 @@ class BitcoinWallet implements Wallet<BitcoinAddress> {
     return blockchainClient.getTransactionHistory(address.address);
   }
 
-  Future<BitcoinBalance> getBalance(BitcoinAddress address) async {
+  Future<List<BitcoinUtxo>> getUtxos(BitcoinAddress address) async {
     _checkNetwork(address);
-    final utxos = await blockchainClient.getUtxos(address.address);
-    return BitcoinBalance(
-      total: utxos.fold<int>(0, (sum, utxo) => sum + utxo.value),
-      confirmed: utxos
-          .where((utxo) => utxo.confirmed)
-          .fold<int>(0, (sum, utxo) => sum + utxo.value),
-      utxos: utxos,
-    );
+    return blockchainClient.getUtxos(address.address);
   }
 
   Future<BitcoinTransaction> preparePayment({

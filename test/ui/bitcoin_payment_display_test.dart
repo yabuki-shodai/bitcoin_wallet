@@ -68,19 +68,22 @@ void main() {
           body: AddressQrDialog(
             name: '貯蓄用',
             address: 'address',
-            loadBalance: () async => BitcoinBalance(
-              total: 10001,
-              confirmed: 10000,
-              utxos: [
-                BitcoinUtxo(
-                  txid: 'utxo-txid',
-                  vout: 0,
-                  value: 1,
-                  confirmed: false,
-                  scriptPubkey: Uint8List(0),
-                ),
-              ],
-            ),
+            loadUtxos: () async => [
+              BitcoinUtxo(
+                txid: 'confirmed-txid',
+                vout: 0,
+                value: 10000,
+                confirmed: true,
+                scriptPubkey: Uint8List(0),
+              ),
+              BitcoinUtxo(
+                txid: 'unconfirmed-txid',
+                vout: 1,
+                value: 1,
+                confirmed: false,
+                scriptPubkey: Uint8List(0),
+              ),
+            ],
             loadHistory: () async => const [
               BitcoinHistoryEntry(
                 txid: 'incoming',
@@ -104,13 +107,43 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('残高: 0.00010001 BTC'), findsOneWidget);
+    expect(find.text('0.00010000 BTC'), findsOneWidget);
     expect(find.text('0.00000001 BTC'), findsOneWidget);
+    expect(find.text('承認済み'), findsOneWidget);
+    expect(find.text('未承認'), findsOneWidget);
     await tester.ensureVisible(find.text('取引履歴'));
     await tester.tap(find.text('取引履歴'));
     await tester.pumpAndSettle();
     expect(find.text('入金: +1.00000001 BTC'), findsOneWidget);
     expect(find.text('出金: -0.00006000 BTC'), findsOneWidget);
     expect(find.text('残高変化なし: 0.00000000 BTC'), findsOneWidget);
+  });
+
+  testWidgets('取得失敗後にUTXOを再取得し空なら残高ゼロを表示する', (tester) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AddressQrDialog(
+            name: '貯蓄用',
+            address: 'address',
+            loadUtxos: () async {
+              calls++;
+              if (calls == 1) throw StateError('connection lost');
+              return [];
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('残高を取得できませんでした。'), findsOneWidget);
+    await tester.tap(find.text('残高を再取得'));
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    expect(find.text('残高: 0.00000000 BTC'), findsOneWidget);
+    expect(find.text('UTXOはありません'), findsOneWidget);
+    expect(find.text('残高を取得できませんでした。'), findsNothing);
   });
 
   testWidgets('送金確認を整形し通信失敗後も同じ取引を再送する', (tester) async {

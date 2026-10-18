@@ -130,7 +130,7 @@ class _BitcoinPageState extends State<BitcoinPage> {
                 .toList();
           });
         },
-        loadBalance: () => widget.wallet.getBalance(address),
+        loadUtxos: () => widget.wallet.getUtxos(address),
         loadHistory: () => widget.wallet.getTransactionHistory(address),
         onSend: () => Navigator.of(dialogContext).pop(true),
       ),

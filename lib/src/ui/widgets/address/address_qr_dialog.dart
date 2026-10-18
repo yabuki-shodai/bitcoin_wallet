@@ -2,7 +2,7 @@ import 'package:bitcoin_wallet/src/ui/formatters/bitcoin_amount.dart';
 import 'package:flutter/material.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_history_entry.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_balance.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_utxo.dart';
 import 'package:bitcoin_wallet/src/ui/widgets/address/address_rename_dialog.dart';
 
 class AddressQrDialog extends StatefulWidget {
@@ -14,7 +14,7 @@ class AddressQrDialog extends StatefulWidget {
     this.onRename,
     this.onCopy,
     this.onOpenExplorer,
-    this.loadBalance,
+    this.loadUtxos,
     this.loadHistory,
   });
 
@@ -24,7 +24,7 @@ class AddressQrDialog extends StatefulWidget {
   final Future<void> Function(String)? onRename;
   final VoidCallback? onCopy;
   final VoidCallback? onOpenExplorer;
-  final Future<BitcoinBalance> Function()? loadBalance;
+  final Future<List<BitcoinUtxo>> Function()? loadUtxos;
   final Future<List<BitcoinHistoryEntry>> Function()? loadHistory;
 
   @override
@@ -32,7 +32,7 @@ class AddressQrDialog extends StatefulWidget {
 }
 
 class _AddressQrDialogState extends State<AddressQrDialog> {
-  Future<BitcoinBalance>? _balance;
+  Future<List<BitcoinUtxo>>? _utxos;
   late String _name;
   List<BitcoinHistoryEntry>? _history;
   bool _historyLoading = false;
@@ -43,7 +43,7 @@ class _AddressQrDialogState extends State<AddressQrDialog> {
   void initState() {
     super.initState();
     _name = widget.name;
-    _balance = widget.loadBalance?.call();
+    _utxos = widget.loadUtxos?.call();
   }
 
   Future<void> _rename() async {
@@ -59,15 +59,16 @@ class _AddressQrDialogState extends State<AddressQrDialog> {
 
   @override
   Widget build(BuildContext context) =>
-      FutureBuilder<BitcoinBalance>(future: _balance, builder: _buildDialog);
+      FutureBuilder<List<BitcoinUtxo>>(future: _utxos, builder: _buildDialog);
 
   Widget _buildDialog(
     BuildContext context,
-    AsyncSnapshot<BitcoinBalance> snapshot,
+    AsyncSnapshot<List<BitcoinUtxo>> snapshot,
   ) {
     final theme = Theme.of(context);
     final displayName = _name.trim().isEmpty ? '名前なし' : _name;
-    final balance = snapshot.data;
+    final utxos = snapshot.data;
+    final total = utxos?.fold<int>(0, (sum, utxo) => sum + utxo.value);
 
     return Dialog(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -109,19 +110,23 @@ class _AddressQrDialogState extends State<AddressQrDialog> {
                     ),
                   ],
                 ),
-                if (widget.loadBalance != null) ...[
+                if (widget.loadUtxos != null) ...[
                   const SizedBox(height: 12),
                   if (snapshot.connectionState != ConnectionState.done)
                     const Text('残高を取得中…')
                   else if (snapshot.hasError) ...[
                     const Text('残高を取得できませんでした。'),
                     TextButton(
-                      onPressed: () =>
-                          setState(() => _balance = widget.loadBalance!()),
+                      onPressed: () {
+                        final utxos = widget.loadUtxos!();
+                        setState(() {
+                          _utxos = utxos;
+                        });
+                      },
                       child: const Text('残高を再取得'),
                     ),
-                  ] else if (balance != null)
-                    Text('残高: ${formatBitcoinAmount(balance.total)}'),
+                  ] else if (total != null)
+                    Text('残高: ${formatBitcoinAmount(total)}'),
                 ],
                 const SizedBox(height: 20),
                 Center(
@@ -180,8 +185,7 @@ class _AddressQrDialogState extends State<AddressQrDialog> {
                   icon: const Icon(Icons.open_in_new),
                   label: const Text('Explorerを開く'),
                 ),
-                if (widget.loadBalance != null ||
-                    widget.loadHistory != null) ...[
+                if (widget.loadUtxos != null || widget.loadHistory != null) ...[
                   const SizedBox(height: 24),
                   if (widget.loadHistory != null)
                     DefaultTabController(
@@ -219,18 +223,18 @@ class _AddressQrDialogState extends State<AddressQrDialog> {
   }
 
   List<Widget> _buildUtxos(
-    AsyncSnapshot<BitcoinBalance> snapshot,
+    AsyncSnapshot<List<BitcoinUtxo>> snapshot,
     ThemeData theme,
   ) {
-    final balance = snapshot.data;
+    final utxos = snapshot.data;
     if (snapshot.connectionState != ConnectionState.done) {
       return [const Text('UTXOを取得中…')];
     }
     if (snapshot.hasError) return [const Text('UTXOを取得できませんでした。残高を再取得してください。')];
-    if (balance == null) return [const Text('UTXOはありません')];
+    if (utxos == null) return [const Text('UTXOはありません')];
     return [
-      if (balance.utxos.isEmpty) const Text('UTXOはありません'),
-      for (final utxo in balance.utxos)
+      if (utxos.isEmpty) const Text('UTXOはありません'),
+      for (final utxo in utxos)
         Card(
           elevation: 0,
           margin: const EdgeInsets.only(bottom: 12),

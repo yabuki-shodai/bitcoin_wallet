@@ -257,7 +257,7 @@ void main() {
     expect(client.sent, isEmpty);
   });
 
-  test('残高をsatoshiで集計し元のUTXO情報を保持する', () async {
+  test('アドレスのUTXO情報をそのまま返す', () async {
     final client = TestBlockchainClient();
     addTearDown(client.close);
     client.utxos = [
@@ -265,14 +265,23 @@ void main() {
       client.utxos.first.copyWith(txid: '33' * 32, value: 1, confirmed: false),
     ];
     final wallet = createWallet(Network.mainnet, client: client);
-    final balance = await wallet.getBalance(source(Network.mainnet));
-    expect(balance.total, 10001);
-    expect(balance.confirmed, 10000);
-    expect(balance.utxos, client.utxos);
-    expect(balance.utxos.last.value, 1);
-    expect(balance.utxos.last.confirmed, isFalse);
+    final utxos = await wallet.getUtxos(source(Network.mainnet));
+    expect(utxos, client.utxos);
+    expect(utxos.last.value, 1);
+    expect(utxos.last.confirmed, isFalse);
     client.utxos = [];
-    expect((await wallet.getBalance(source(Network.mainnet))).total, 0);
+    expect(await wallet.getUtxos(source(Network.mainnet)), isEmpty);
+  });
+
+  test('UTXO取得時はネットワーク違いを通信前に拒否する', () async {
+    final client = TestBlockchainClient();
+    addTearDown(client.close);
+    final wallet = createWallet(Network.mainnet, client: client);
+    await expectLater(
+      wallet.getUtxos(source(Network.testnet)),
+      throwsArgumentError,
+    );
+    expect(client.reads, 0);
   });
 
   test('履歴の入出金とゼロ残高変化をsatoshiのまま返す', () async {
