@@ -31,9 +31,7 @@ class BitcoinBlockchainClient implements BlockchainClient {
   Future<List<BitcoinHistoryEntry>> getTransactionHistory(
     String address,
   ) async {
-    if (BitcoinAddressDecoder().decode(address).network != network) {
-      throw ArgumentError.value(address, 'address', 'クライアントとネットワークが一致しません');
-    }
+    BitcoinAddressDecoder().toScriptPubKey(address, network: network);
 
     Future<List<BitcoinHistoryEntry>> fetch(String path) async {
       final url = _apiUrl(path);
@@ -129,9 +127,7 @@ class BitcoinBlockchainClient implements BlockchainClient {
   }
 
   Future<List<BitcoinUtxo>> getUtxos(String address) async {
-    if (BitcoinAddressDecoder().decode(address).network != network) {
-      throw ArgumentError.value(address, 'address', 'クライアントとネットワークが一致しません');
-    }
+    BitcoinAddressDecoder().toScriptPubKey(address, network: network);
 
     final url = _apiUrl('address/$address/utxo');
     final response = await _client

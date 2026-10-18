@@ -20,6 +20,12 @@ class BitcoinAddressRepositoryImpl implements BitcoinAddressRepository {
 
   BitcoinAddressRepositoryImpl(this._box);
 
+  /// Hive本体の初期化後に呼び出す。
+  static Future<BitcoinAddressRepositoryImpl> open() async {
+    final box = await Hive.openBox<String>(boxName);
+    return BitcoinAddressRepositoryImpl(box);
+  }
+
   @override
   Future<void> deleteAddress(BitcoinAddress address) {
     return _box.delete(address.address);

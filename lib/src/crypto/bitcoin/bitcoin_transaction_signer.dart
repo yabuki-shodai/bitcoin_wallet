@@ -15,19 +15,14 @@ class BitcoinTransactionSigner {
 
   BitcoinTransaction sign({
     required BitcoinTransaction transaction,
-    required List<BitcoinUtxo> utxos,
     required Uint8List privateKey,
     required Uint8List compressedPublicKey,
     required Uint8List uncompressedPublicKey,
   }) {
-    if (transaction.inputs.length != utxos.length) {
-      throw ArgumentError('InputとUTXOの数が一致しません');
-    }
-
     final signedInputs = <TxInput>[];
-    for (var index = 0; index < utxos.length; index++) {
+    for (var index = 0; index < transaction.inputs.length; index++) {
       final input = transaction.inputs[index];
-      final utxo = utxos[index];
+      final utxo = input.utxo;
       final type = scriptType(utxo.scriptPubkey);
       final publicKey = matchingPublicKey(
         utxo,
@@ -52,12 +47,10 @@ class BitcoinTransactionSigner {
         ..._signEcdsa(digest, privateKey),
         sighashAll,
       ]).asUnmodifiableView();
-      final txid = Uint8List.fromList(input.txid).asUnmodifiableView();
 
       if (type == BitcoinAddressType.p2pkh) {
         signedInputs.add(
           input.copyWith(
-            txid: txid,
             scriptSig: List<int>.unmodifiable([
               signature.length,
               ...signature,
@@ -69,7 +62,6 @@ class BitcoinTransactionSigner {
       } else {
         signedInputs.add(
           input.copyWith(
-            txid: txid,
             witness: List<Uint8List>.unmodifiable([
               signature,
               Uint8List.fromList(publicKey).asUnmodifiableView(),

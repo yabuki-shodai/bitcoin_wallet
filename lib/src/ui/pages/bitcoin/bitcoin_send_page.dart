@@ -1,11 +1,12 @@
+import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction_serializer.dart';
+import 'package:bitcoin_wallet/src/ui/formatters/bitcoin_amount.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_payment_preview.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_transaction.dart';
 
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_wallet.dart';
 import 'package:bitcoin_wallet/src/core/wallet/network.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address.dart';
-// import '../../../crypto/bitcoin/models/bitcoin_payment_preview.dart';
 
 class BitcoinSendPage extends StatefulWidget {
   const BitcoinSendPage({super.key, required this.from, required this.wallet});
@@ -21,7 +22,8 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
   final _to = TextEditingController();
   final _amount = TextEditingController();
   final _feeRate = TextEditingController(text: '2');
-  BitcoinPaymentPreview? _payment;
+  BitcoinTransaction? _payment;
+  int _amountSats = 0;
   bool _busy = false;
   bool _attempted = false;
   String? _txid;
@@ -50,7 +52,15 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
         feeRate: _feeRate.text,
       );
       if (!mounted) return;
-      setState(() => _payment = result);
+      // walletで検証済みの入力を、浮動小数点を使わず表示用に変換する。
+      final parts = _amount.text.trim().split('.');
+      final amountSats =
+          int.parse(parts.first) * 100000000 +
+          int.parse((parts.length == 2 ? parts.last : '').padRight(8, '0'));
+      setState(() {
+        _payment = result;
+        _amountSats = amountSats;
+      });
     } on StateError catch (error) {
       if (mounted) setState(() => _error = error.message);
     } on ArgumentError catch (error) {
@@ -164,19 +174,29 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
                     )
                   else ...[
                     const Text('宛先'),
-                    SelectableText(payment.toAddress),
+                    SelectableText(_to.text.trim()),
                     const SizedBox(height: 16),
-                    Text('送金額: ${payment.amountText}'),
-                    Text('手数料: ${payment.feeText}'),
-                    Text('合計: ${payment.totalText}'),
-                    Text('実際の手数料率: ${payment.feeRateText}'),
+                    Text('送金額: ${formatBitcoinAmount(_amountSats)}'),
+                    Text(
+                      '手数料: ${formatBitcoinAmount(payment.fee)} (${payment.fee} sat)',
+                    ),
+                    Text(
+                      '合計: ${formatBitcoinAmount(_amountSats + payment.fee)}',
+                    ),
+                    Text(
+                      '実際の手数料率: ${(payment.fee / payment.virtualSize).toStringAsFixed(2)} sat/vB',
+                    ),
                     const SizedBox(height: 16),
                     const Text('お釣りは送信元アドレスに戻ります。'),
                     if (_attempted) ...[
                       const SizedBox(height: 20),
                       Text(sent ? '取引を送信しました。承認をお待ちください。' : '取引ID'),
                       SelectableText(_txid ?? payment.txid),
-                      SelectableText(payment.explorerUrl.toString()),
+                      SelectableText(
+                        widget.wallet
+                            .transactionExplorerUrl(payment.txid)
+                            .toString(),
+                      ),
                     ],
                   ],
                   if (_error != null) ...[

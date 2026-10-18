@@ -5,7 +5,7 @@ import 'package:bitcoin_wallet/src/crypto/bitcoin/index.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/index.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/repository/index.dart';
 
-class BitcoinWallet implements Wallet<BitcoinAddress>, BitcoinPayments {
+class BitcoinWallet implements Wallet<BitcoinAddress> {
   final Network network;
   final BitcoinAddressRepository repostory;
   final PrivateKeyStore store;
@@ -18,16 +18,6 @@ class BitcoinWallet implements Wallet<BitcoinAddress>, BitcoinPayments {
     BitcoinBlockchainClient? blockchainClient,
   }) : blockchainClient =
            blockchainClient ?? BitcoinBlockchainClient(network: network);
-
-  void _validatePaymentAddress(String address) {
-    final decoded = BitcoinAddressDecoder().decode(address);
-    if (decoded.network != network) {
-      throw ArgumentError.value(address, 'address', 'ウォレットとネットワークが一致しません');
-    }
-  }
-
-  String _formatBitcoin(int satoshis) =>
-      '${satoshis ~/ 100000000}.${(satoshis % 100000000).toString().padLeft(8, '0')}';
 
   int? _parseBitcoin(String text) {
     final match = RegExp(
@@ -56,59 +46,19 @@ class BitcoinWallet implements Wallet<BitcoinAddress>, BitcoinPayments {
     if (address.network != network) throw ArgumentError('アドレスのネットワークが一致しません');
   }
 
-  Future<List<BitcoinHistorySummary>> getTransactionHistory(
+  Future<List<BitcoinHistoryEntry>> getTransactionHistory(
     BitcoinAddress address,
   ) async {
     _checkNetwork(address);
-    final entries = await blockchainClient.getTransactionHistory(
-      address.address,
-    );
-    return [
-      for (final entry in entries)
-        BitcoinHistorySummary(
-          txid: entry.txid,
-          direction: switch (entry.balanceChange) {
-            > 0 => '入金',
-            < 0 => '出金',
-            _ => '残高変化なし',
-          },
-          amountText:
-              '${switch (entry.balanceChange) {
-                > 0 => '+',
-                < 0 => '-',
-                _ => '',
-              }}${_formatBitcoin(entry.balanceChange.abs())} BTC',
-          confirmed: entry.confirmed,
-          confirmedAt: entry.confirmedAt,
-        ),
-    ];
+    return blockchainClient.getTransactionHistory(address.address);
   }
 
-  @override
-  Future<BitcoinBalanceSummary> getBalance(BitcoinAddress address) async {
+  Future<List<BitcoinUtxo>> getUtxos(BitcoinAddress address) async {
     _checkNetwork(address);
-    final utxos = await blockchainClient.getUtxos(address.address);
-    final total = utxos.fold<int>(0, (sum, u) => sum + u.value);
-    final confirmed = utxos
-        .where((u) => u.confirmed)
-        .fold<int>(0, (sum, u) => sum + u.value);
-    return BitcoinBalanceSummary(
-      totalText: '${_formatBitcoin(total)} BTC',
-      confirmedText: '${_formatBitcoin(confirmed)} BTC',
-      utxos: [
-        for (final utxo in utxos)
-          BitcoinUtxoSummary(
-            txid: utxo.txid,
-            vout: utxo.vout,
-            valueText: '${_formatBitcoin(utxo.value)} BTC',
-            confirmed: utxo.confirmed,
-          ),
-      ],
-    );
+    return blockchainClient.getUtxos(address.address);
   }
 
-  @override
-  Future<BitcoinPaymentPreview> preparePayment({
+  Future<BitcoinTransaction> preparePayment({
     required BitcoinAddress from,
     required String toAddress,
     required String amount,
@@ -117,7 +67,7 @@ class BitcoinWallet implements Wallet<BitcoinAddress>, BitcoinPayments {
     _checkNetwork(from);
     final destination = toAddress.trim();
     try {
-      _validatePaymentAddress(destination);
+      BitcoinAddressDecoder().toScriptPubKey(destination, network: network);
     } on ArgumentError {
       throw ArgumentError.value(
         toAddress,
@@ -159,7 +109,7 @@ class BitcoinWallet implements Wallet<BitcoinAddress>, BitcoinPayments {
     final privateKey = await store.readPrivateKey(from.address);
     if (privateKey == null) throw StateError('送信元の秘密鍵が見つかりません');
     final utxos = await blockchainClient.getUtxos(from.address);
-    final payment = BitcoinTransactionBuilder(network: network).buildPayment(
+    return BitcoinTransactionBuilder(network: network).buildPayment(
       utxos: utxos,
       privateKey: privateKey,
       toAddress: destination,
@@ -167,21 +117,14 @@ class BitcoinWallet implements Wallet<BitcoinAddress>, BitcoinPayments {
       feeRate: rate,
       changeAddress: from.address,
     );
-    return BitcoinPaymentPreview(
-      rawHex: payment.rawHex,
-      txid: payment.txid,
-      toAddress: payment.toAddress,
-      amountText: '${_formatBitcoin(payment.amount)} BTC',
-      feeText: '${_formatBitcoin(payment.fee)} BTC (${payment.fee} sat)',
-      totalText: '${_formatBitcoin(payment.amount + payment.fee)} BTC',
-      feeRateText:
-          '${(payment.fee / payment.virtualSize).toStringAsFixed(2)} sat/vB',
-      explorerUrl: transactionExplorerUrl(payment.txid),
-    );
   }
 
-  @override
-  Future<String> sendPayment(BitcoinPaymentPreview payment) async {
+  Future<String> sendPayment(BitcoinTransaction payment) async {
+    if (payment.inputs.any(
+      (input) => input.scriptSig.isEmpty && (input.witness?.isEmpty ?? true),
+    )) {
+      throw StateError('未署名の取引は送信できません');
+    }
     final txid = await blockchainClient.broadcastTransaction(payment.rawHex);
     if (txid.toLowerCase() != payment.txid) {
       throw StateError('送信結果のtxidが一致しません');

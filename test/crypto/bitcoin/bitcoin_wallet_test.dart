@@ -1,3 +1,4 @@
+import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction_serializer.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -217,7 +218,7 @@ void main() {
     expect(store.reads, 2);
   });
 
-  test('入力文字列から署名し確認用の値を返して同じ取引を送信する', () async {
+  test('入力文字列から署名済み取引を返し同じ取引を送信する', () async {
     final store = TestKeyStore()..privateKey = (Uint8List(32)..[31] = 1);
     final client = TestBlockchainClient();
     addTearDown(client.close);
@@ -229,21 +230,34 @@ void main() {
       feeRate: ' 1 ',
     );
     final payment = result;
-    expect(payment.toAddress, mainnetAddress);
-    expect(payment.amountText, '0.00009800 BTC');
-    expect(payment.feeText, '0.00000200 BTC (200 sat)');
-    expect(payment.totalText, '0.00010000 BTC');
-    expect(payment.feeRateText, matches(RegExp(r'^\d+\.\d{2} sat/vB$')));
-    expect(
-      payment.explorerUrl.toString(),
-      'https://blockstream.info/tx/${payment.txid}',
-    );
+    expect(payment.outputs.single.value, 9800);
+    expect(payment.inputs.single.utxo, client.utxos.single);
+    expect(payment.fee, 200);
+    expect(payment.virtualSize, greaterThan(0));
     expect(await wallet.sendPayment(payment), payment.txid);
     expect(await wallet.sendPayment(payment), payment.txid);
     expect(client.sent, [payment.rawHex, payment.rawHex]);
   });
 
-  test('残高取得がBTC表示とUTXO表示を整形する', () async {
+  test('署名前の取引は送信しない', () async {
+    final client = TestBlockchainClient();
+    addTearDown(client.close);
+    final store = TestKeyStore()..privateKey = (Uint8List(32)..[31] = 1);
+    final wallet = createWallet(Network.mainnet, client: client, store: store);
+    final payment = await wallet.preparePayment(
+      from: source(Network.mainnet),
+      toAddress: mainnetAddress,
+      amount: '0.00009800',
+      feeRate: '1',
+    );
+    final unsigned = payment.copyWith(
+      inputs: [payment.inputs.single.copyWith(scriptSig: [], witness: null)],
+    );
+    await expectLater(wallet.sendPayment(unsigned), throwsStateError);
+    expect(client.sent, isEmpty);
+  });
+
+  test('アドレスのUTXO情報をそのまま返す', () async {
     final client = TestBlockchainClient();
     addTearDown(client.close);
     client.utxos = [
@@ -251,19 +265,26 @@ void main() {
       client.utxos.first.copyWith(txid: '33' * 32, value: 1, confirmed: false),
     ];
     final wallet = createWallet(Network.mainnet, client: client);
-    final balance = await wallet.getBalance(source(Network.mainnet));
-    expect(balance.totalText, '0.00010001 BTC');
-    expect(balance.confirmedText, '0.00010000 BTC');
-    expect(balance.utxos.last.valueText, '0.00000001 BTC');
-    expect(balance.utxos.last.confirmed, isFalse);
+    final utxos = await wallet.getUtxos(source(Network.mainnet));
+    expect(utxos, client.utxos);
+    expect(utxos.last.value, 1);
+    expect(utxos.last.confirmed, isFalse);
     client.utxos = [];
-    expect(
-      (await wallet.getBalance(source(Network.mainnet))).totalText,
-      '0.00000000 BTC',
-    );
+    expect(await wallet.getUtxos(source(Network.mainnet)), isEmpty);
   });
 
-  test('履歴の入出金とゼロ残高変化を表示用に変換する', () async {
+  test('UTXO取得時はネットワーク違いを通信前に拒否する', () async {
+    final client = TestBlockchainClient();
+    addTearDown(client.close);
+    final wallet = createWallet(Network.mainnet, client: client);
+    await expectLater(
+      wallet.getUtxos(source(Network.testnet)),
+      throwsArgumentError,
+    );
+    expect(client.reads, 0);
+  });
+
+  test('履歴の入出金とゼロ残高変化をsatoshiのまま返す', () async {
     final confirmedAt = DateTime.utc(2026, 10, 14);
     final client = TestBlockchainClient()
       ..history = [
@@ -287,12 +308,8 @@ void main() {
     addTearDown(client.close);
     final wallet = createWallet(Network.mainnet, client: client);
     final history = await wallet.getTransactionHistory(source(Network.mainnet));
-    expect(history.map((entry) => entry.direction), ['入金', '出金', '残高変化なし']);
-    expect(history.map((entry) => entry.amountText), [
-      '+1.00000001 BTC',
-      '-0.00006000 BTC',
-      '0.00000000 BTC',
-    ]);
+    expect(history, client.history);
+    expect(history.map((entry) => entry.balanceChange), [100000001, -6000, 0]);
     expect(history.map((entry) => entry.txid), [
       'incoming',
       'outgoing',

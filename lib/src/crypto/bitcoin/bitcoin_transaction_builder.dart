@@ -8,12 +8,9 @@ import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_output_builder.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction_signer.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address_type.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_utxo.dart';
-import 'package:convert/convert.dart' as convert;
-import 'package:crypto/crypto.dart';
 
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction_serializer.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_transaction.dart';
-import 'package:bitcoin_wallet/src/crypto/bitcoin/models/prepared_bitcoin_payment.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/tx_output.dart';
 
 class BitcoinTransactionBuilder implements TransactionBuilder {
@@ -39,7 +36,7 @@ class BitcoinTransactionBuilder implements TransactionBuilder {
     changeAddress: changeAddress,
   ).rawHex;
 
-  PreparedBitcoinPayment buildPayment({
+  BitcoinTransaction buildPayment({
     required List<BitcoinUtxo> utxos,
     required Uint8List privateKey,
     required String toAddress,
@@ -124,40 +121,18 @@ class BitcoinTransactionBuilder implements TransactionBuilder {
     );
     final transaction = BitcoinTransactionSigner().sign(
       transaction: unsignedTransaction,
-      utxos: selected,
       privateKey: privateKey,
       compressedPublicKey: compressedPublicKey,
       uncompressedPublicKey: uncompressedPublicKey,
     );
 
-    final actualFee =
-        inputTotal - outputs.fold<int>(0, (sum, output) => sum + output.value);
-    const serializer = BitcoinTransactionSerializer();
-    final virtualSize = serializer.virtualSize(transaction);
+    final actualFee = transaction.fee;
+    final virtualSize = transaction.virtualSize;
     if (actualFee < virtualSize * feeRate) {
       throw StateError('署名後の取引手数料が指定レートを下回りました');
     }
 
-    return PreparedBitcoinPayment(
-      rawHex: convert.hex.encode(serializer.serialize(transaction)),
-      txid: convert.hex.encode(
-        sha256
-            .convert(
-              sha256
-                  .convert(
-                    serializer.serialize(transaction, includeWitness: false),
-                  )
-                  .bytes,
-            )
-            .bytes
-            .reversed
-            .toList(),
-      ),
-      virtualSize: virtualSize,
-      toAddress: toAddress,
-      amount: amount,
-      fee: actualFee,
-    );
+    return transaction;
   }
 
   Set<String> _compressedP2pkh = {};

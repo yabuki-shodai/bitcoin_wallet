@@ -15,10 +15,11 @@ class BitcoinInputBuilder {
     }
 
     return TxInput(
-      txid: Uint8List.fromList(
-        decodedTxid.reversed.toList(),
-      ).asUnmodifiableView(),
-      vout: utxo.vout,
+      utxo: utxo.copyWith(
+        scriptPubkey: Uint8List.fromList(
+          utxo.scriptPubkey,
+        ).asUnmodifiableView(),
+      ),
     );
   }
 }

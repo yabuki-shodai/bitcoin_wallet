@@ -3,19 +3,18 @@ import 'dart:typed_data';
 import 'package:base58check/base58check.dart';
 import 'package:bech32/bech32.dart';
 import 'package:bitcoin_wallet/src/core/wallet/network.dart';
-import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address_type.dart';
-import 'package:bitcoin_wallet/src/crypto/bitcoin/models/decode_bitcoin_address.dart';
 
 class BitcoinAddressDecoder {
-  DecodeBitcoinAddress decode(String address) {
+  /// 対応種別とネットワークを検証し、出力スクリプトへ変換する。
+  Uint8List toScriptPubKey(String address, {required Network network}) {
     final lowerAddress = address.toLowerCase();
     if (lowerAddress.startsWith('bc1') || lowerAddress.startsWith('tb1')) {
-      return _decodeSegwit(address);
+      return _decodeSegwit(address, network);
     }
-    return _decodeBase58(address);
+    return _decodeBase58(address, network);
   }
 
-  DecodeBitcoinAddress _decodeSegwit(String address) {
+  Uint8List _decodeSegwit(String address, Network network) {
     late Segwit decoded;
     try {
       decoded = const SegwitCodec().decode(address);
@@ -26,15 +25,18 @@ class BitcoinAddressDecoder {
     if (decoded.version != 0 || decoded.program.length != 20) {
       throw UnsupportedError('未対応のSegWitアドレスタイプです');
     }
-
-    return DecodeBitcoinAddress(
-      network: decoded.hrp == 'bc' ? Network.mainnet : Network.testnet,
-      type: BitcoinAddressType.p2wpkh,
-      publicKeyHash: Uint8List.fromList(decoded.program),
-    );
+    final expectedHrp = network == Network.mainnet ? 'bc' : 'tb';
+    if (decoded.hrp != expectedHrp) {
+      throw ArgumentError.value(address, 'address', 'ネットワークが一致しません');
+    }
+    return Uint8List.fromList([
+      0x00, // OP_0
+      0x14, // 20-byte push
+      ...decoded.program,
+    ]).asUnmodifiableView();
   }
 
-  DecodeBitcoinAddress _decodeBase58(String address) {
+  Uint8List _decodeBase58(String address, Network network) {
     late Base58CheckPayload decoded;
     try {
       decoded = Base58CheckCodec.bitcoin().decode(address);
@@ -42,20 +44,24 @@ class BitcoinAddressDecoder {
       throw FormatException('無効なBase58Checkアドレスです: $error', address);
     }
 
-    final network = switch (decoded.version) {
+    final actualNetwork = switch (decoded.version) {
       0x00 => Network.mainnet,
       0x6f => Network.testnet,
       _ => throw UnsupportedError('未対応のBase58Checkアドレスタイプです'),
     };
-
     if (decoded.payload.length != 20) {
       throw FormatException('公開鍵ハッシュの長さが不正です', address);
     }
-
-    return DecodeBitcoinAddress(
-      network: network,
-      type: BitcoinAddressType.p2pkh,
-      publicKeyHash: Uint8List.fromList(decoded.payload),
-    );
+    if (actualNetwork != network) {
+      throw ArgumentError.value(address, 'address', 'ネットワークが一致しません');
+    }
+    return Uint8List.fromList([
+      0x76, // OP_DUP
+      0xa9, // OP_HASH160
+      0x14, // 20-byte push
+      ...decoded.payload,
+      0x88, // OP_EQUALVERIFY
+      0xac, // OP_CHECKSIG
+    ]).asUnmodifiableView();
   }
 }
