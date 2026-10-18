@@ -1,3 +1,4 @@
+import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction_serializer.dart';
 import 'dart:typed_data';
 
 import 'package:bitcoin_wallet/src/core/wallet/network.dart';
@@ -68,17 +69,31 @@ void main() {
       lockTime: 17,
       inputs: [
         TxInput(
-          txid: _bytes(
-            'fff7f7881a8099afa6940d42d1e7f6362bec38171ea3edf433541db4e4ad969f',
+          utxo: BitcoinUtxo(
+            txid: convert.hex.encode(
+              _bytes(
+                'fff7f7881a8099afa6940d42d1e7f6362bec38171ea3edf433541db4e4ad969f',
+              ).reversed.toList(),
+            ),
+            vout: 0,
+            value: 625000000,
+            confirmed: true,
+            scriptPubkey: Uint8List(0),
           ),
-          vout: 0,
           sequence: 0xffffffee,
         ),
         TxInput(
-          txid: _bytes(
-            'ef51e1b804cc89d182d279655c3aa89e815b1b309fe287d9b2b55d57b90ec68a',
+          utxo: BitcoinUtxo(
+            txid: convert.hex.encode(
+              _bytes(
+                'ef51e1b804cc89d182d279655c3aa89e815b1b309fe287d9b2b55d57b90ec68a',
+              ).reversed.toList(),
+            ),
+            vout: 1,
+            value: 600000000,
+            confirmed: true,
+            scriptPubkey: Uint8List(0),
           ),
-          vout: 1,
         ),
       ],
       outputs: [
@@ -138,6 +153,67 @@ void main() {
       ),
     );
     expect(raw, endsWith('00000000'));
+  });
+
+  test('入力金額は手数料計算に使い送信データには含めない', () {
+    final utxo = BitcoinUtxo(
+      txid: '0123456789abcdef' * 4,
+      vout: 7,
+      value: 10000,
+      confirmed: true,
+      scriptPubkey: _bytes('0014751e76e8199196d454941c45d1b3a323f1433bd6'),
+    );
+    final input = BitcoinInputBuilder().build(utxo);
+    final transaction = BitcoinTransaction(
+      inputs: [input],
+      outputs: [TxOutput(value: 9000, scriptPubKey: utxo.scriptPubkey)],
+    );
+    final updated = transaction.copyWith(
+      inputs: [input.copyWith(utxo: input.utxo.copyWith(value: 11000))],
+    );
+    expect(input.txid, orderedEquals(_bytes(utxo.txid).reversed));
+    expect(input.vout, 7);
+    expect(transaction.fee, 1000);
+    expect(updated.fee, 2000);
+    expect(updated.rawHex, transaction.rawHex);
+    expect(updated.txid, transaction.txid);
+    expect(updated.virtualSize, transaction.virtualSize);
+  });
+
+  test('SegWitのtxidはwitnessを含めず送信データとサイズはwitnessを含める', () {
+    final script = _bytes('0014751e76e8199196d454941c45d1b3a323f1433bd6');
+    final transaction = BitcoinTransactionBuilder(network: Network.mainnet)
+        .buildPayment(
+          utxos: [
+            BitcoinUtxo(
+              txid: '11' * 32,
+              vout: 1,
+              value: 10000,
+              confirmed: true,
+              scriptPubkey: script,
+            ),
+          ],
+          privateKey: Uint8List(32)..[31] = 1,
+          toAddress: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4',
+          amount: 5000,
+          feeRate: 2,
+          changeAddress: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4',
+        );
+    final withoutWitness = transaction.copyWith(
+      inputs: [transaction.inputs.single.copyWith(witness: null)],
+    );
+    expect(transaction.txid, withoutWitness.txid);
+    expect(transaction.rawHex, isNot(withoutWitness.rawHex));
+    expect(transaction.virtualSize, greaterThan(withoutWitness.virtualSize));
+    expect(transaction.fee, withoutWitness.fee);
+    final rawHex = transaction.rawHex;
+    script[0] = 0xff;
+    expect(transaction.rawHex, rawHex);
+    expect(transaction.inputs.single.utxo.scriptPubkey[0], 0x00);
+    expect(
+      () => transaction.inputs.single.utxo.scriptPubkey[0] = 0xff,
+      throwsUnsupportedError,
+    );
   });
 
   test('P2PKH UTXOから署名済みlegacy取引を構築する', () {
@@ -237,7 +313,6 @@ void main() {
 
       final signedTransaction = signer.sign(
         transaction: transaction,
-        utxos: [utxo],
         privateKey: privateKey,
         compressedPublicKey: compressed,
         uncompressedPublicKey: uncompressed,

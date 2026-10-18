@@ -1,7 +1,8 @@
+import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction_serializer.dart';
 import 'package:bitcoin_wallet/src/ui/formatters/bitcoin_amount.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:bitcoin_wallet/src/crypto/bitcoin/models/prepared_bitcoin_payment.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_transaction.dart';
 
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_wallet.dart';
 import 'package:bitcoin_wallet/src/core/wallet/network.dart';
@@ -21,7 +22,8 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
   final _to = TextEditingController();
   final _amount = TextEditingController();
   final _feeRate = TextEditingController(text: '2');
-  PreparedBitcoinPayment? _payment;
+  BitcoinTransaction? _payment;
+  int _amountSats = 0;
   bool _busy = false;
   bool _attempted = false;
   String? _txid;
@@ -50,7 +52,15 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
         feeRate: _feeRate.text,
       );
       if (!mounted) return;
-      setState(() => _payment = result);
+      // walletで検証済みの入力を、浮動小数点を使わず表示用に変換する。
+      final parts = _amount.text.trim().split('.');
+      final amountSats =
+          int.parse(parts.first) * 100000000 +
+          int.parse((parts.length == 2 ? parts.last : '').padRight(8, '0'));
+      setState(() {
+        _payment = result;
+        _amountSats = amountSats;
+      });
     } on StateError catch (error) {
       if (mounted) setState(() => _error = error.message);
     } on ArgumentError catch (error) {
@@ -164,14 +174,14 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
                     )
                   else ...[
                     const Text('宛先'),
-                    SelectableText(payment.toAddress),
+                    SelectableText(_to.text.trim()),
                     const SizedBox(height: 16),
-                    Text('送金額: ${formatBitcoinAmount(payment.amount)}'),
+                    Text('送金額: ${formatBitcoinAmount(_amountSats)}'),
                     Text(
                       '手数料: ${formatBitcoinAmount(payment.fee)} (${payment.fee} sat)',
                     ),
                     Text(
-                      '合計: ${formatBitcoinAmount(payment.amount + payment.fee)}',
+                      '合計: ${formatBitcoinAmount(_amountSats + payment.fee)}',
                     ),
                     Text(
                       '実際の手数料率: ${(payment.fee / payment.virtualSize).toStringAsFixed(2)} sat/vB',

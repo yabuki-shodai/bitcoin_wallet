@@ -19,13 +19,6 @@ class BitcoinWallet implements Wallet<BitcoinAddress> {
   }) : blockchainClient =
            blockchainClient ?? BitcoinBlockchainClient(network: network);
 
-  void _validatePaymentAddress(String address) {
-    final decoded = BitcoinAddressDecoder().decode(address);
-    if (decoded.network != network) {
-      throw ArgumentError.value(address, 'address', 'ウォレットとネットワークが一致しません');
-    }
-  }
-
   int? _parseBitcoin(String text) {
     final match = RegExp(
       r'^(\d{1,8})(?:\.(\d{1,8}))?$',
@@ -72,7 +65,7 @@ class BitcoinWallet implements Wallet<BitcoinAddress> {
     );
   }
 
-  Future<PreparedBitcoinPayment> preparePayment({
+  Future<BitcoinTransaction> preparePayment({
     required BitcoinAddress from,
     required String toAddress,
     required String amount,
@@ -81,7 +74,7 @@ class BitcoinWallet implements Wallet<BitcoinAddress> {
     _checkNetwork(from);
     final destination = toAddress.trim();
     try {
-      _validatePaymentAddress(destination);
+      BitcoinAddressDecoder().toScriptPubKey(destination, network: network);
     } on ArgumentError {
       throw ArgumentError.value(
         toAddress,
@@ -133,7 +126,12 @@ class BitcoinWallet implements Wallet<BitcoinAddress> {
     );
   }
 
-  Future<String> sendPayment(PreparedBitcoinPayment payment) async {
+  Future<String> sendPayment(BitcoinTransaction payment) async {
+    if (payment.inputs.any(
+      (input) => input.scriptSig.isEmpty && (input.witness?.isEmpty ?? true),
+    )) {
+      throw StateError('未署名の取引は送信できません');
+    }
     final txid = await blockchainClient.broadcastTransaction(payment.rawHex);
     if (txid.toLowerCase() != payment.txid) {
       throw StateError('送信結果のtxidが一致しません');

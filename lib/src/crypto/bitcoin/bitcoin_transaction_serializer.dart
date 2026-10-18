@@ -1,5 +1,8 @@
 import 'dart:typed_data';
 
+import 'package:convert/convert.dart' as convert;
+import 'package:crypto/crypto.dart';
+
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_transaction.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/tx_output.dart';
 
@@ -73,4 +76,22 @@ List<int> compactSize(int value) {
   if (value <= 0xffff) return [0xfd, ...uintLittleEndian(value, 2)];
   if (value <= 0xffffffff) return [0xfe, ...uintLittleEndian(value, 4)];
   return [0xff, ...uintLittleEndian(value, 8)];
+}
+
+/// 取引から導出できる値を、別のモデルに保持せず計算する。
+extension BitcoinTransactionEncoding on BitcoinTransaction {
+  String get rawHex =>
+      convert.hex.encode(const BitcoinTransactionSerializer().serialize(this));
+
+  String get txid {
+    final bytes = const BitcoinTransactionSerializer().serialize(
+      this,
+      includeWitness: false,
+    );
+    return convert.hex.encode(
+      sha256.convert(sha256.convert(bytes).bytes).bytes.reversed.toList(),
+    );
+  }
+
+  int get virtualSize => const BitcoinTransactionSerializer().virtualSize(this);
 }

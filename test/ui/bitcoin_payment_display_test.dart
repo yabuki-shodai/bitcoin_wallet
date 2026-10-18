@@ -1,3 +1,4 @@
+import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction_serializer.dart';
 import 'dart:typed_data';
 
 import 'package:bitcoin_wallet/src/core/secure/private_key_store.dart';
@@ -22,18 +23,27 @@ class _Wallet extends BitcoinWallet {
         store: _KeyStore(),
       );
 
-  final payment = const PreparedBitcoinPayment(
-    rawHex: 'signed-transaction',
-    txid: 'payment-txid',
-    toAddress: 'destination',
-    amount: 9800,
-    fee: 200,
-    virtualSize: 140,
+  final payment = BitcoinTransaction(
+    inputs: [
+      TxInput(
+        utxo: BitcoinUtxo(
+          txid: '22' * 32,
+          vout: 0,
+          value: 10000,
+          confirmed: true,
+          scriptPubkey: Uint8List.fromList([0x51]),
+        ),
+        scriptSig: [1],
+      ),
+    ],
+    outputs: [
+      TxOutput(value: 9800, scriptPubKey: Uint8List.fromList([0x51])),
+    ],
   );
-  final sent = <PreparedBitcoinPayment>[];
+  final sent = <BitcoinTransaction>[];
 
   @override
-  Future<PreparedBitcoinPayment> preparePayment({
+  Future<BitcoinTransaction> preparePayment({
     required BitcoinAddress from,
     required String toAddress,
     required String amount,
@@ -41,7 +51,7 @@ class _Wallet extends BitcoinWallet {
   }) async => payment;
 
   @override
-  Future<String> sendPayment(PreparedBitcoinPayment payment) async {
+  Future<String> sendPayment(BitcoinTransaction payment) async {
     sent.add(payment);
     if (sent.length == 1) throw StateError('connection lost');
     return payment.txid;
@@ -119,16 +129,25 @@ void main() {
         ),
       ),
     );
+    await tester.enterText(
+      find.byKey(const Key('send-address')),
+      ' destination ',
+    );
+    await tester.enterText(
+      find.byKey(const Key('send-amount')),
+      ' 0.00009800 ',
+    );
     await tester.tap(find.text('送金内容を確認'));
     await tester.pumpAndSettle();
     expect(find.text('送金額: 0.00009800 BTC'), findsOneWidget);
     expect(find.text('手数料: 0.00000200 BTC (200 sat)'), findsOneWidget);
     expect(find.text('合計: 0.00010000 BTC'), findsOneWidget);
-    expect(find.text('実際の手数料率: 1.43 sat/vB'), findsOneWidget);
+    expect(find.text('destination'), findsOneWidget);
+    expect(find.text('実際の手数料率: 3.23 sat/vB'), findsOneWidget);
     await tester.tap(find.text('確認して送信'));
     await tester.pumpAndSettle();
     expect(
-      find.text('https://blockstream.info/tx/payment-txid'),
+      find.text('https://blockstream.info/tx/${wallet.payment.txid}'),
       findsOneWidget,
     );
     await tester.ensureVisible(find.text('同じ取引を再送信'));

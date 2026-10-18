@@ -1,3 +1,4 @@
+import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction_serializer.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -229,13 +230,31 @@ void main() {
       feeRate: ' 1 ',
     );
     final payment = result;
-    expect(payment.toAddress, mainnetAddress);
-    expect(payment.amount, 9800);
+    expect(payment.outputs.single.value, 9800);
+    expect(payment.inputs.single.utxo, client.utxos.single);
     expect(payment.fee, 200);
     expect(payment.virtualSize, greaterThan(0));
     expect(await wallet.sendPayment(payment), payment.txid);
     expect(await wallet.sendPayment(payment), payment.txid);
     expect(client.sent, [payment.rawHex, payment.rawHex]);
+  });
+
+  test('署名前の取引は送信しない', () async {
+    final client = TestBlockchainClient();
+    addTearDown(client.close);
+    final store = TestKeyStore()..privateKey = (Uint8List(32)..[31] = 1);
+    final wallet = createWallet(Network.mainnet, client: client, store: store);
+    final payment = await wallet.preparePayment(
+      from: source(Network.mainnet),
+      toAddress: mainnetAddress,
+      amount: '0.00009800',
+      feeRate: '1',
+    );
+    final unsigned = payment.copyWith(
+      inputs: [payment.inputs.single.copyWith(scriptSig: [], witness: null)],
+    );
+    await expectLater(wallet.sendPayment(unsigned), throwsStateError);
+    expect(client.sent, isEmpty);
   });
 
   test('残高をsatoshiで集計し元のUTXO情報を保持する', () async {
