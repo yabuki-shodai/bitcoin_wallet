@@ -1,7 +1,8 @@
+import 'package:bitcoin_wallet/src/ui/formatters/bitcoin_amount.dart';
 import 'package:flutter/material.dart';
-import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_history_summary.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_history_entry.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_balance_summary.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_balance.dart';
 import 'package:bitcoin_wallet/src/ui/widgets/address/address_rename_dialog.dart';
 
 class AddressQrDialog extends StatefulWidget {
@@ -23,17 +24,17 @@ class AddressQrDialog extends StatefulWidget {
   final Future<void> Function(String)? onRename;
   final VoidCallback? onCopy;
   final VoidCallback? onOpenExplorer;
-  final Future<BitcoinBalanceSummary> Function()? loadBalance;
-  final Future<List<BitcoinHistorySummary>> Function()? loadHistory;
+  final Future<BitcoinBalance> Function()? loadBalance;
+  final Future<List<BitcoinHistoryEntry>> Function()? loadHistory;
 
   @override
   State<AddressQrDialog> createState() => _AddressQrDialogState();
 }
 
 class _AddressQrDialogState extends State<AddressQrDialog> {
-  Future<BitcoinBalanceSummary>? _balance;
+  Future<BitcoinBalance>? _balance;
   late String _name;
-  List<BitcoinHistorySummary>? _history;
+  List<BitcoinHistoryEntry>? _history;
   bool _historyLoading = false;
   bool _historyError = false;
   int _selectedTab = 0;
@@ -57,14 +58,12 @@ class _AddressQrDialogState extends State<AddressQrDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<BitcoinBalanceSummary>(
-    future: _balance,
-    builder: _buildDialog,
-  );
+  Widget build(BuildContext context) =>
+      FutureBuilder<BitcoinBalance>(future: _balance, builder: _buildDialog);
 
   Widget _buildDialog(
     BuildContext context,
-    AsyncSnapshot<BitcoinBalanceSummary> snapshot,
+    AsyncSnapshot<BitcoinBalance> snapshot,
   ) {
     final theme = Theme.of(context);
     final displayName = _name.trim().isEmpty ? '名前なし' : _name;
@@ -122,7 +121,7 @@ class _AddressQrDialogState extends State<AddressQrDialog> {
                       child: const Text('残高を再取得'),
                     ),
                   ] else if (balance != null)
-                    Text('残高: ${balance.totalText}'),
+                    Text('残高: ${formatBitcoinAmount(balance.total)}'),
                 ],
                 const SizedBox(height: 20),
                 Center(
@@ -220,7 +219,7 @@ class _AddressQrDialogState extends State<AddressQrDialog> {
   }
 
   List<Widget> _buildUtxos(
-    AsyncSnapshot<BitcoinBalanceSummary> snapshot,
+    AsyncSnapshot<BitcoinBalance> snapshot,
     ThemeData theme,
   ) {
     final balance = snapshot.data;
@@ -250,7 +249,7 @@ class _AddressQrDialogState extends State<AddressQrDialog> {
                   children: [
                     Expanded(
                       child: Text(
-                        utxo.valueText,
+                        formatBitcoinAmount(utxo.value),
                         style: theme.textTheme.titleMedium,
                       ),
                     ),
@@ -354,7 +353,11 @@ class _AddressQrDialogState extends State<AddressQrDialog> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${entry.direction}: ${entry.amountText}',
+                    '${switch (entry.balanceChange) {
+                      > 0 => '入金',
+                      < 0 => '出金',
+                      _ => '残高変化なし',
+                    }}: ${entry.balanceChange > 0 ? '+' : ''}${formatBitcoinAmount(entry.balanceChange)}',
                     style: theme.textTheme.titleMedium,
                   ),
                   const SizedBox(height: 8),
