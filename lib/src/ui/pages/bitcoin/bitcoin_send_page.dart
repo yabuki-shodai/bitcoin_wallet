@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:bitcoin_wallet/src/ui/pages/bitcoin/bitcoin_qr_scan_page.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction_serializer.dart';
 import 'package:bitcoin_wallet/src/ui/formatters/bitcoin_amount.dart';
 import 'package:flutter/material.dart';
@@ -25,6 +27,7 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
   BitcoinTransaction? _payment;
   int _amountSats = 0;
   bool _busy = false;
+  bool _scanning = false;
   bool _attempted = false;
   String? _txid;
   String? _error;
@@ -37,8 +40,31 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
     super.dispose();
   }
 
+  Future<void> _scanAddress() async {
+    if (_busy || _scanning) return;
+    FocusScope.of(context).unfocus();
+    setState(() => _scanning = true);
+    try {
+      final address = await Navigator.of(context).push<String>(
+        MaterialPageRoute(
+          builder: (_) => BitcoinQrScanPage(network: widget.from.network),
+        ),
+      );
+      if (!mounted || address == null) return;
+      setState(() {
+        _to.value = TextEditingValue(
+          text: address,
+          selection: TextSelection.collapsed(offset: address.length),
+        );
+        _error = null;
+      });
+    } finally {
+      if (mounted) setState(() => _scanning = false);
+    }
+  }
+
   Future<void> _prepare() async {
-    if (_busy) return;
+    if (_busy || _scanning) return;
     FocusScope.of(context).unfocus();
     setState(() {
       _busy = true;
@@ -101,6 +127,13 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
   Widget build(BuildContext context) {
     final payment = _payment;
     final sent = _txid != null;
+    final canScan =
+        kIsWeb ||
+        const [
+          TargetPlatform.android,
+          TargetPlatform.iOS,
+          TargetPlatform.macOS,
+        ].contains(defaultTargetPlatform);
     return PopScope(
       canPop: !_busy,
       child: Scaffold(
@@ -135,8 +168,20 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
                             key: const Key('send-address'),
                             controller: _to,
                             enabled: !_busy,
-                            decoration: const InputDecoration(
+                            onTapOutside: (_) =>
+                                FocusScope.of(context).unfocus(),
+                            decoration: InputDecoration(
                               labelText: '宛先アドレス',
+                              suffixIcon: canScan
+                                  ? IconButton(
+                                      key: const Key('scan-address'),
+                                      tooltip: 'QRコードを読み取る',
+                                      onPressed: _busy || _scanning
+                                          ? null
+                                          : _scanAddress,
+                                      icon: const Icon(Icons.qr_code_scanner),
+                                    )
+                                  : null,
                             ),
                             onChanged: (_) => setState(() => _error = null),
                           ),
@@ -145,6 +190,8 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
                             key: const Key('send-amount'),
                             controller: _amount,
                             enabled: !_busy,
+                            onTapOutside: (_) =>
+                                FocusScope.of(context).unfocus(),
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
@@ -159,6 +206,8 @@ class _BitcoinSendPageState extends State<BitcoinSendPage> {
                             key: const Key('send-fee-rate'),
                             controller: _feeRate,
                             enabled: !_busy,
+                            onTapOutside: (_) =>
+                                FocusScope.of(context).unfocus(),
                             keyboardType: TextInputType.number,
                             inputFormatters: [
                               FilteringTextInputFormatter.digitsOnly,
