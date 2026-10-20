@@ -8,6 +8,7 @@ import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_wallet.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_blockchain_client.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_utxo.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_history_entry.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_transaction.dart';
 import 'package:convert/convert.dart' as convert;
 import 'package:crypto/crypto.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_address.dart';
@@ -49,6 +50,22 @@ class TestBlockchainClient extends BitcoinBlockchainClient {
   int historyReads = 0;
   List<BitcoinHistoryEntry> history = [];
   final sent = <String>[];
+  final transactions = <String, BitcoinTransaction>{};
+  final confirmations = <String, bool>{};
+  final spends = <String, List<String?>>{};
+  String? broadcastTxid;
+
+  @override
+  Future<BitcoinTransaction> getTransaction(String txid) async =>
+      transactions[txid]!;
+
+  @override
+  Future<bool?> getTransactionConfirmation(String txid) async =>
+      confirmations[txid];
+
+  @override
+  Future<List<String?>> getSpendingTransactionIds(String txid) async =>
+      spends[txid]!;
   List<BitcoinUtxo> utxos = [
     BitcoinUtxo(
       txid: '22' * 32,
@@ -80,6 +97,7 @@ class TestBlockchainClient extends BitcoinBlockchainClient {
   @override
   Future<String> broadcastTransaction(String rawHex) async {
     sent.add(rawHex);
+    if (broadcastTxid != null) return broadcastTxid!;
     return convert.hex.encode(
       sha256
           .convert(sha256.convert(convert.hex.decode(rawHex)).bytes)
@@ -110,6 +128,201 @@ void main() {
     publicKey: Uint8List(33),
     type: BitcoinAddressType.p2pkh,
   );
+
+  test('宛先変更を検証して送信し、再試行時は受理済みの取引を再送しない', () async {
+    final store = TestKeyStore()..privateKey = (Uint8List(32)..[31] = 1);
+    final client = TestBlockchainClient();
+    addTearDown(client.close);
+    final wallet = createWallet(Network.mainnet, store: store, client: client);
+    final from = source(Network.mainnet);
+    final original = await wallet.preparePayment(
+      from: from,
+      toAddress: mainnetAddress,
+      amount: '0.00005000',
+      feeRate: '2',
+      replaceable: true,
+    );
+    client.transactions[original.txid] = original;
+    client.confirmations[original.txid] = false;
+    client.spends[original.txid] = [null, null];
+    client.spends[original.inputs.single.utxo.txid] = [original.txid];
+    final replacement = await wallet.prepareReplacement(
+      from: from,
+      txid: original.txid,
+      toAddress: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4',
+      feeRate: '2',
+    );
+    final altered = replacement.copyWith(
+      outputs: [
+        replacement.outputs.first.copyWith(value: 4000),
+        replacement.outputs[1],
+      ],
+    );
+    await expectLater(
+      wallet.sendReplacement(
+        from: from,
+        originalTxid: original.txid,
+        payment: altered,
+      ),
+      throwsStateError,
+    );
+    expect(client.sent, isEmpty);
+    client.broadcastTxid = replacement.txid;
+    expect(
+      await wallet.sendReplacement(
+        from: from,
+        originalTxid: original.txid,
+        payment: replacement,
+      ),
+      replacement.txid,
+    );
+    expect(client.sent, [replacement.rawHex]);
+    client.confirmations[replacement.txid] = false;
+    client.transactions.remove(original.txid);
+    expect(
+      await wallet.sendReplacement(
+        from: from,
+        originalTxid: original.txid,
+        payment: replacement,
+      ),
+      replacement.txid,
+    );
+    expect(client.sent, hasLength(1));
+  });
+
+  test('上書き成功は全入力の使用先とAPIの取引存在を確認して判定する', () async {
+    final store = TestKeyStore()..privateKey = (Uint8List(32)..[31] = 1);
+    final client = TestBlockchainClient();
+    addTearDown(client.close);
+    client.utxos = [
+      client.utxos.first.copyWith(value: 3000),
+      client.utxos.first.copyWith(value: 3000, vout: 1),
+    ];
+    final wallet = createWallet(Network.mainnet, store: store, client: client);
+    final from = source(Network.mainnet);
+    final original = await wallet.preparePayment(
+      from: from,
+      toAddress: mainnetAddress,
+      amount: '0.00005000',
+      feeRate: '1',
+      replaceable: true,
+    );
+    expect(original.inputs, hasLength(2));
+    client.transactions[original.txid] = original;
+    client.confirmations[original.txid] = false;
+    client.spends[original.txid] = [null, null];
+    final parentTxid = original.inputs.first.utxo.txid;
+    client.spends[parentTxid] = [original.txid, original.txid];
+    final replacement = await wallet.prepareReplacement(
+      from: from,
+      txid: original.txid,
+      toAddress: mainnetAddress,
+      feeRate: '2',
+    );
+    Future<BitcoinReplacementStatus> check() =>
+        wallet.getReplacementStatus(original: original, payment: replacement);
+    expect(await check(), BitcoinReplacementStatus.notFound);
+    client.confirmations[replacement.txid] = false;
+    expect(await check(), BitcoinReplacementStatus.originalActive);
+    client.spends[parentTxid] = [replacement.txid, 'another-transaction'];
+    expect(await check(), BitcoinReplacementStatus.conflicted);
+    client.spends[parentTxid] = [replacement.txid, original.txid];
+    expect(await check(), BitcoinReplacementStatus.pending);
+    client.spends[parentTxid] = [replacement.txid, null];
+    expect(await check(), BitcoinReplacementStatus.pending);
+    client.spends[parentTxid] = [replacement.txid];
+    expect(await check(), BitcoinReplacementStatus.pending);
+    client.spends[parentTxid] = [replacement.txid, replacement.txid];
+    client.confirmations.remove(original.txid);
+    expect(await check(), BitcoinReplacementStatus.accepted);
+    client.confirmations[replacement.txid] = true;
+    expect(await check(), BitcoinReplacementStatus.confirmed);
+    client.confirmations[original.txid] = true;
+    expect(await check(), BitcoinReplacementStatus.conflicted);
+    await expectLater(
+      wallet.getReplacementStatus(original: original, payment: original),
+      throwsArgumentError,
+    );
+    final differentInput = replacement.copyWith(
+      inputs: [
+        replacement.inputs.first.copyWith(
+          utxo: replacement.inputs.first.utxo.copyWith(vout: 2),
+        ),
+        replacement.inputs.last,
+      ],
+    );
+    await expectLater(
+      wallet.getReplacementStatus(original: original, payment: differentInput),
+      throwsArgumentError,
+    );
+    expect(client.sent, isEmpty);
+  });
+
+  test('承認・子取引・別の置換を送信直前に再確認する', () async {
+    final store = TestKeyStore()..privateKey = (Uint8List(32)..[31] = 1);
+    final client = TestBlockchainClient();
+    addTearDown(client.close);
+    final wallet = createWallet(Network.mainnet, store: store, client: client);
+    final from = source(Network.mainnet);
+    final normal = await wallet.preparePayment(
+      from: from,
+      toAddress: mainnetAddress,
+      amount: '0.00005000',
+      feeRate: '2',
+    );
+    client.transactions[normal.txid] = normal;
+    await expectLater(
+      wallet.getReplaceableTransaction(from: from, txid: normal.txid),
+      throwsStateError,
+    );
+    final original = await wallet.preparePayment(
+      from: from,
+      toAddress: mainnetAddress,
+      amount: '0.00005000',
+      feeRate: '2',
+      replaceable: true,
+    );
+    client.transactions[original.txid] = original;
+    client.confirmations[original.txid] = false;
+    client.spends[original.txid] = [null, null];
+    client.spends[original.inputs.single.utxo.txid] = [original.txid];
+    final replacement = await wallet.prepareReplacement(
+      from: from,
+      txid: original.txid,
+      toAddress: mainnetAddress,
+      feeRate: '5',
+    );
+    client.confirmations[original.txid] = true;
+    await expectLater(
+      wallet.sendReplacement(
+        from: from,
+        originalTxid: original.txid,
+        payment: replacement,
+      ),
+      throwsStateError,
+    );
+    client.confirmations[original.txid] = false;
+    client.spends[original.txid] = [null, 'child'];
+    await expectLater(
+      wallet.sendReplacement(
+        from: from,
+        originalTxid: original.txid,
+        payment: replacement,
+      ),
+      throwsStateError,
+    );
+    client.spends[original.txid] = [null, null];
+    client.spends[original.inputs.single.utxo.txid] = ['another-replacement'];
+    await expectLater(
+      wallet.sendReplacement(
+        from: from,
+        originalTxid: original.txid,
+        payment: replacement,
+      ),
+      throwsStateError,
+    );
+    expect(client.sent, isEmpty);
+  });
 
   test('不正な入力は例外にし秘密鍵・UTXOを取得しない', () async {
     final store = TestKeyStore();

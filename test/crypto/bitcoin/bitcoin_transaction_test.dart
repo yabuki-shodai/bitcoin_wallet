@@ -17,6 +17,163 @@ import 'package:pointycastle/export.dart';
 Uint8List _bytes(String hex) => Uint8List.fromList(convert.hex.decode(hex));
 
 void main() {
+  for (final sourceScript in [
+    '76a914751e76e8199196d454941c45d1b3a323f1433bd688ac',
+    '0014751e76e8199196d454941c45d1b3a323f1433bd6',
+  ]) {
+    test('変更可能な送金だけを置換し宛先変更後も署名を検証できる: $sourceScript', () {
+      final builder = BitcoinTransactionBuilder(network: Network.mainnet);
+      final privateKey = Uint8List(32)..[31] = 1;
+      final utxo = BitcoinUtxo(
+        txid: '11' * 32,
+        vout: 0,
+        value: 10000,
+        confirmed: true,
+        scriptPubkey: _bytes(sourceScript),
+      );
+      const destination = '1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH';
+      const newDestination = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
+      final normal = builder.buildPayment(
+        utxos: [utxo],
+        privateKey: privateKey,
+        toAddress: destination,
+        amount: 5000,
+        feeRate: 2,
+        changeAddress: destination,
+      );
+      expect(normal.inputs.single.sequence, 0xffffffff);
+      expect(
+        () => builder.buildReplacement(
+          original: normal,
+          toAddress: newDestination,
+          privateKey: privateKey,
+          feeRate: 3,
+        ),
+        throwsStateError,
+      );
+      final original = builder.buildPayment(
+        utxos: [utxo],
+        privateKey: privateKey,
+        toAddress: destination,
+        amount: 5000,
+        feeRate: 2,
+        changeAddress: destination,
+        replaceable: true,
+      );
+      final replacement = builder.buildReplacement(
+        original: original,
+        toAddress: newDestination,
+        privateKey: privateKey,
+        feeRate: 2,
+      );
+      expect(replacement.inputs.single.sequence, 0xfffffffd);
+      expect(replacement.inputs.single.utxo, original.inputs.single.utxo);
+      expect(replacement.outputs.first.value, 5000);
+      expect(
+        replacement.outputs.first.scriptPubKey,
+        _bytes('0014751e76e8199196d454941c45d1b3a323f1433bd6'),
+      );
+      expect(
+        replacement.outputs[1].scriptPubKey,
+        original.outputs[1].scriptPubKey,
+      );
+      expect(
+        replacement.fee,
+        greaterThanOrEqualTo(original.fee + replacement.virtualSize),
+      );
+      expect(
+        replacement.outputs[1].value,
+        original.outputs[1].value - (replacement.fee - original.fee),
+      );
+      expect(replacement.txid, isNot(original.txid));
+      final input = replacement.inputs.single;
+      final signature = sourceScript.startsWith('76')
+          ? input.scriptSig.sublist(1, 1 + input.scriptSig.first)
+          : input.witness!.first;
+      final rLength = signature[3];
+      final r = BigInt.parse(
+        convert.hex.encode(signature.sublist(4, 4 + rLength)),
+        radix: 16,
+      );
+      final sLengthOffset = 5 + rLength;
+      final s = BigInt.parse(
+        convert.hex.encode(
+          signature.sublist(
+            sLengthOffset + 1,
+            sLengthOffset + 1 + signature[sLengthOffset],
+          ),
+        ),
+        radix: 16,
+      );
+      final signer = BitcoinTransactionSigner();
+      final digest = sourceScript.startsWith('76')
+          ? signer.signatureHashLegacy(replacement, 0, utxo.scriptPubkey)
+          : signer.signatureHashSegwitV0(
+              replacement,
+              0,
+              utxo.value,
+              utxo.scriptPubkey.sublist(2),
+            );
+      final curve = ECCurve_secp256k1();
+      final verifier = ECDSASigner()
+        ..init(
+          false,
+          PublicKeyParameter<ECPublicKey>(ECPublicKey(curve.G, curve)),
+        );
+      expect(verifier.verifySignature(digest, ECSignature(r, s)), isTrue);
+      final bumped = builder.buildReplacement(
+        original: replacement,
+        toAddress: newDestination,
+        privateKey: privateKey,
+        feeRate: 5,
+      );
+      expect(bumped.outputs.first, replacement.outputs.first);
+      expect(bumped.fee, greaterThan(replacement.fee));
+      expect(
+        () => builder.buildReplacement(
+          original: original,
+          toAddress: newDestination,
+          privateKey: privateKey,
+          feeRate: 100,
+        ),
+        throwsStateError,
+      );
+    });
+  }
+
+  test('変更後のお釣りがdust未満なら除去し送金額は維持する', () {
+    final builder = BitcoinTransactionBuilder(network: Network.mainnet);
+    final privateKey = Uint8List(32)..[31] = 1;
+    const address = '1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH';
+    final original = builder.buildPayment(
+      utxos: [
+        BitcoinUtxo(
+          txid: '11' * 32,
+          vout: 0,
+          value: 10000,
+          confirmed: true,
+          scriptPubkey: _bytes(
+            '76a914751e76e8199196d454941c45d1b3a323f1433bd688ac',
+          ),
+        ),
+      ],
+      privateKey: privateKey,
+      toAddress: address,
+      amount: 8800,
+      feeRate: 2,
+      changeAddress: address,
+      replaceable: true,
+    );
+    final replacement = builder.buildReplacement(
+      original: original,
+      toAddress: address,
+      privateKey: privateKey,
+      feeRate: 3,
+    );
+    expect(replacement.outputs.single.value, 8800);
+    expect(replacement.fee, 1200);
+  });
+
   test('重複UTXOを使った取引を拒否する', () {
     final utxo = BitcoinUtxo(
       txid: '11' * 32,

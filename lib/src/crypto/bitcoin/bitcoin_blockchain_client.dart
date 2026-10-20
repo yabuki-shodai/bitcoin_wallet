@@ -6,6 +6,10 @@ import 'package:bitcoin_wallet/src/core/wallet/network.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_address_decoder.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_utxo.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_history_entry.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_transaction.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/tx_input.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/tx_output.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction_serializer.dart';
 import 'package:convert/convert.dart' as convert;
 import 'package:http/http.dart' as http;
 
@@ -27,6 +31,96 @@ class BitcoinBlockchainClient implements BlockchainClient {
   Uri _apiUrl(String path) => Uri.parse(_apiBaseUrl).resolve(path);
 
   void close() => _client.close();
+
+  Future<dynamic> _getTransactionData(
+    String txid, {
+    String suffix = '',
+    bool allowMissing = false,
+  }) async {
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(txid)) {
+      throw const FormatException('txidが不正です');
+    }
+    final url = _apiUrl('tx/$txid$suffix');
+    final response = await _client
+        .get(url)
+        .timeout(const Duration(seconds: 20));
+    if (allowMissing && response.statusCode == 404) return null;
+    if (response.statusCode != 200) {
+      throw http.ClientException(
+        '取引取得に失敗しました (HTTP ${response.statusCode})',
+        url,
+      );
+    }
+    return jsonDecode(response.body);
+  }
+
+  /// 未送信と未承認を区別するため、取引本体の存在と承認状態を取得する。
+  /// /status は存在しないtxidにも confirmed=false を返すことがある。
+  Future<bool?> getTransactionConfirmation(String txid) async {
+    final data =
+        await _getTransactionData(txid, allowMissing: true)
+            as Map<String, dynamic>?;
+    if (data == null) return null;
+    final status = data['status'];
+    if (data['txid'] != txid ||
+        status is! Map<String, dynamic> ||
+        status['confirmed'] is! bool) {
+      throw const FormatException('取得した取引の状態が不正です');
+    }
+    return status['confirmed'] as bool;
+  }
+
+  Future<List<String?>> getSpendingTransactionIds(String txid) async {
+    final data =
+        await _getTransactionData(txid, suffix: '/outspends') as List<dynamic>;
+    return data.map((item) {
+      final output = item as Map<String, dynamic>;
+      return output['spent'] == true ? output['txid'] as String : null;
+    }).toList();
+  }
+
+  Future<BitcoinTransaction> getTransaction(String txid) async {
+    final data = await _getTransactionData(txid) as Map<String, dynamic>;
+    final transaction = BitcoinTransaction(
+      version: data['version'] as int,
+      lockTime: data['locktime'] as int,
+      inputs: [
+        for (final item in data['vin'] as List<dynamic>)
+          TxInput(
+            utxo: BitcoinUtxo(
+              txid: item['txid'] as String,
+              vout: item['vout'] as int,
+              value: item['prevout']['value'] as int,
+              confirmed: false,
+              scriptPubkey: Uint8List.fromList(
+                convert.hex.decode(item['prevout']['scriptpubkey'] as String),
+              ),
+            ),
+            sequence: item['sequence'] as int,
+            scriptSig: convert.hex.decode(item['scriptsig'] as String),
+            witness: (item['witness'] as List<dynamic>?)
+                ?.map(
+                  (value) =>
+                      Uint8List.fromList(convert.hex.decode(value as String)),
+                )
+                .toList(),
+          ),
+      ],
+      outputs: [
+        for (final item in data['vout'] as List<dynamic>)
+          TxOutput(
+            value: item['value'] as int,
+            scriptPubKey: Uint8List.fromList(
+              convert.hex.decode(item['scriptpubkey'] as String),
+            ),
+          ),
+      ],
+    );
+    if (transaction.txid != txid || transaction.fee != data['fee']) {
+      throw const FormatException('取得した取引の内容が一致しません');
+    }
+    return transaction;
+  }
 
   Future<List<BitcoinHistoryEntry>> getTransactionHistory(
     String address,
@@ -88,10 +182,31 @@ class BitcoinBlockchainClient implements BlockchainClient {
     final status = json['status'] as Map<String, dynamic>;
     final confirmed = status['confirmed'] as bool;
     final blockTime = status['block_time'] as int?;
+    final inputs = json['vin'] as List<dynamic>;
+    final outputs = json['vout'] as List<dynamic>;
+    final canReplace =
+        !confirmed &&
+        inputs.isNotEmpty &&
+        inputs.every(
+          (input) =>
+              input['sequence'] == 0xfffffffd &&
+              input['prevout']?['scriptpubkey_address'] == address,
+        ) &&
+        outputs.length == 2 &&
+        outputs[1]['scriptpubkey_address'] == address &&
+        outputs.first['scriptpubkey_address'] != null &&
+        const [
+          'p2pkh',
+          'v0_p2wpkh',
+        ].contains(outputs.first['scriptpubkey_type']);
     return BitcoinHistoryEntry(
       txid: json['txid'] as String,
       balanceChange: received - spent,
       confirmed: confirmed,
+      toAddress: canReplace
+          ? outputs.first['scriptpubkey_address'] as String
+          : null,
+      canReplace: canReplace,
       confirmedAt: confirmed && blockTime != null
           ? DateTime.fromMillisecondsSinceEpoch(blockTime * 1000, isUtc: true)
           : null,

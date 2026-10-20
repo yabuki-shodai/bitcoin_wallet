@@ -43,6 +43,7 @@ class BitcoinTransactionBuilder implements TransactionBuilder {
     required int amount,
     required int feeRate,
     required String changeAddress,
+    bool replaceable = false,
   }) {
     if (amount <= 0) throw RangeError.value(amount, 'amount');
     if (feeRate <= 0) throw RangeError.value(feeRate, 'feeRate');
@@ -116,7 +117,12 @@ class BitcoinTransactionBuilder implements TransactionBuilder {
 
     final inputBuilder = BitcoinInputBuilder();
     final unsignedTransaction = BitcoinTransaction(
-      inputs: List.unmodifiable(selected.map(inputBuilder.build)),
+      inputs: List.unmodifiable(
+        selected.map((utxo) {
+          final input = inputBuilder.build(utxo);
+          return replaceable ? input.copyWith(sequence: 0xfffffffd) : input;
+        }),
+      ),
       outputs: List.unmodifiable(outputs),
     );
     final transaction = BitcoinTransactionSigner().sign(
@@ -133,6 +139,79 @@ class BitcoinTransactionBuilder implements TransactionBuilder {
     }
 
     return transaction;
+  }
+
+  BitcoinTransaction buildReplacement({
+    required BitcoinTransaction original,
+    required String toAddress,
+    required Uint8List privateKey,
+    required int feeRate,
+  }) {
+    if (feeRate <= 0) throw ArgumentError('1以上の整数を入力してください');
+    if (original.inputs.isEmpty ||
+        original.inputs.any((input) => input.sequence != 0xfffffffd)) {
+      throw StateError('変更可能な送金ではありません');
+    }
+    if (original.outputs.length != 2) {
+      throw StateError('送金の変更に利用できるお釣りがありません');
+    }
+    final paymentOutput = BitcoinOutputBuilder(
+      network: network,
+    ).build(toAddress, original.outputs.first.value);
+    if (paymentOutput == original.outputs.first &&
+        feeRate * original.virtualSize <= original.fee) {
+      throw ArgumentError('現在より高い手数料率を入力してください');
+    }
+    final keyGenerator = Secp256k1KeyPairGenerator();
+    final compressed = keyGenerator.derivePublicKey(
+      privateKey,
+      compressed: true,
+    );
+    final uncompressed = keyGenerator.derivePublicKey(
+      privateKey,
+      compressed: false,
+    );
+    final utxos = original.inputs.map((input) => input.utxo).toList();
+    _compressedP2pkh = {
+      for (final utxo in utxos)
+        if (scriptType(utxo.scriptPubkey) == BitcoinAddressType.p2pkh &&
+            matchingPublicKey(utxo, compressed, uncompressed).length == 33)
+          '${utxo.txid}:${utxo.vout}',
+    };
+    final size = _estimateVbytes(utxos, [paymentOutput, original.outputs[1]]);
+    // 1 sat/vBの追加分を確保し、旧取引の手数料率も必ず上回る。
+    var fee = size * feeRate;
+    final minimumFee = original.fee + size;
+    if (fee < minimumFee) fee = minimumFee;
+    final minimumRateFee = original.fee * size ~/ original.virtualSize + 1;
+    if (fee < minimumRateFee) fee = minimumRateFee;
+    final change = original.outputs[1];
+    final changeValue = change.value - (fee - original.fee);
+    if (changeValue < 0) throw StateError('手数料の変更に必要なお釣りが不足しています');
+    final replacement = original.copyWith(
+      inputs: List.unmodifiable(
+        original.inputs.map(
+          (input) => input.copyWith(scriptSig: const [], witness: null),
+        ),
+      ),
+      outputs: List.unmodifiable([
+        paymentOutput,
+        if (changeValue >= _minimumChange) change.copyWith(value: changeValue),
+      ]),
+    );
+    final signed = BitcoinTransactionSigner().sign(
+      transaction: replacement,
+      privateKey: privateKey,
+      compressedPublicKey: compressed,
+      uncompressedPublicKey: uncompressed,
+    );
+    if (signed.fee < signed.virtualSize * feeRate ||
+        signed.fee < original.fee + signed.virtualSize ||
+        signed.fee * original.virtualSize <=
+            original.fee * signed.virtualSize) {
+      throw StateError('置換取引の手数料が不足しています');
+    }
+    return signed;
   }
 
   Set<String> _compressedP2pkh = {};
