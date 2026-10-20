@@ -26,6 +26,22 @@ network: Network.mainnet,
 
 Stop the app and run `flutter run` again to apply the change.
 
+## Supported address types
+
+| Address type | Create / receive | Send from | Send to |
+| --- | --- | --- | --- |
+| P2PKH (Legacy) | Supported | Supported | Supported |
+| P2WPKH (Native SegWit) | Supported | Supported | Supported |
+| P2SH, including P2SH-P2WPKH (Nested SegWit) | Not supported | Not supported | Not supported |
+| P2WSH | Not supported | Not supported | Not supported |
+| P2TR (Taproot) | Not supported | Not supported | Not supported |
+
+Both Bitcoin Mainnet and Testnet4 are supported. Destination addresses must match the wallet's selected network.
+
+- P2PKH addresses start with `1` on Mainnet and `m` or `n` on Testnet4.
+- P2WPKH addresses start with `bc1q` on Mainnet and `tb1q` on Testnet4. These prefixes are also used by P2WSH, which is not supported; validation checks the address type as well as its prefix.
+- Some unsupported types are defined in the address type enum for future use. Their presence does not mean address generation or transactions support them.
+
 ## Data storage
 
 - Address information (display name, address, network, public key, and address type) is stored locally as JSON in the Hive box named `bitcoin_address`.

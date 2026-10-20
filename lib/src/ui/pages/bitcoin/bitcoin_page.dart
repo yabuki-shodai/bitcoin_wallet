@@ -13,6 +13,8 @@ import 'package:bitcoin_wallet/src/ui/router/app_router.dart';
 import 'package:bitcoin_wallet/src/ui/pages/bitcoin/bitcoin_send_page.dart';
 import 'package:bitcoin_wallet/src/ui/pages/bitcoin/bitcoin_menu_page.dart';
 
+enum _AddressAction { send, sendReplaceable }
+
 class BitcoinPage extends StatefulWidget {
   const BitcoinPage({super.key, required this.wallet});
 
@@ -41,12 +43,19 @@ class _BitcoinPageState extends State<BitcoinPage> {
     await _loadAddresses();
   }
 
-  Future<void> _showSend(BitcoinAddress address) async {
+  Future<void> _showSend(
+    BitcoinAddress address, {
+    bool replaceable = false,
+  }) async {
     if (_sending) return;
     _sending = true;
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => BitcoinSendPage(from: address, wallet: widget.wallet),
+        builder: (_) => BitcoinSendPage(
+          from: address,
+          wallet: widget.wallet,
+          replaceable: replaceable,
+        ),
       ),
     );
     if (!mounted) return;
@@ -112,7 +121,7 @@ class _BitcoinPageState extends State<BitcoinPage> {
 
   Future<void> _showDetails(BitcoinAddress address) async {
     var currentAddress = address;
-    final send = await showDialog<bool>(
+    final action = await showDialog<_AddressAction>(
       context: context,
       builder: (dialogContext) => AddressQrDialog(
         name: address.displayName,
@@ -132,13 +141,17 @@ class _BitcoinPageState extends State<BitcoinPage> {
         },
         loadUtxos: () => widget.wallet.getUtxos(address),
         loadHistory: () => widget.wallet.getTransactionHistory(address),
-        onSend: () => Navigator.of(dialogContext).pop(true),
+        onSend: () => Navigator.of(dialogContext).pop(_AddressAction.send),
+        onSendReplaceable: () =>
+            Navigator.of(dialogContext).pop(_AddressAction.sendReplaceable),
       ),
     );
-    if (mounted && send == true) {
-      await _showSend(currentAddress);
-      if (mounted) await _showDetails(currentAddress);
-    }
+    if (!mounted || action == null) return;
+    await _showSend(
+      currentAddress,
+      replaceable: action == _AddressAction.sendReplaceable,
+    );
+    if (mounted) await _showDetails(currentAddress);
   }
 
   Future<void> _openExplorer(BitcoinAddress address) async {

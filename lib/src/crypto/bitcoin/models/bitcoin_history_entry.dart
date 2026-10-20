@@ -10,5 +10,7 @@ abstract class BitcoinHistoryEntry with _$BitcoinHistoryEntry {
     required int balanceChange,
     required bool confirmed,
     DateTime? confirmedAt,
+    String? toAddress,
+    @Default(false) bool canReplace,
   }) = _BitcoinHistoryEntry;
 }

@@ -1,7 +1,11 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:bitcoin_wallet/src/core/wallet/network.dart';
 import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_blockchain_client.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction_builder.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/bitcoin_transaction_serializer.dart';
+import 'package:bitcoin_wallet/src/crypto/bitcoin/models/bitcoin_utxo.dart';
 import 'package:convert/convert.dart' as convert;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -13,6 +17,175 @@ void main() {
   const txid =
       'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
   const script = '0014751e76e8199196d454941c45d1b3a323f1433bd6';
+
+  test('APIの取引詳細から既存モデルを復元し、txidと手数料を検証する', () async {
+    final original = BitcoinTransactionBuilder(network: Network.mainnet)
+        .buildPayment(
+          utxos: [
+            BitcoinUtxo(
+              txid: '11' * 32,
+              vout: 0,
+              value: 10000,
+              confirmed: true,
+              scriptPubkey: Uint8List.fromList(convert.hex.decode(script)),
+            ),
+          ],
+          privateKey: Uint8List(32)..[31] = 1,
+          toAddress: mainnetAddress,
+          amount: 5000,
+          feeRate: 2,
+          changeAddress: mainnetAddress,
+          replaceable: true,
+        );
+    final data = {
+      'txid': original.txid,
+      'version': original.version,
+      'locktime': original.lockTime,
+      'fee': original.fee,
+      'status': {'confirmed': false},
+      'vin': [
+        for (final input in original.inputs)
+          {
+            'txid': input.utxo.txid,
+            'vout': input.utxo.vout,
+            'sequence': input.sequence,
+            'scriptsig': convert.hex.encode(input.scriptSig),
+            'witness': input.witness?.map(convert.hex.encode).toList(),
+            'prevout': {
+              'value': input.utxo.value,
+              'scriptpubkey': convert.hex.encode(input.utxo.scriptPubkey),
+            },
+          },
+      ],
+      'vout': [
+        for (final output in original.outputs)
+          {
+            'value': output.value,
+            'scriptpubkey': convert.hex.encode(output.scriptPubKey),
+          },
+      ],
+    };
+    var missing = false;
+    final client = BitcoinBlockchainClient(
+      network: Network.mainnet,
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/status')) {
+          return http.Response('{"confirmed":false}', 200);
+        }
+        if (request.url.path.endsWith('/outspends')) {
+          return http.Response(
+            '[{"spent":false},{"spent":true,"txid":"child"}]',
+            200,
+          );
+        }
+        return missing
+            ? http.Response('Transaction not found', 404)
+            : http.Response(jsonEncode(data), 200);
+      }),
+    );
+    addTearDown(client.close);
+    final loaded = await client.getTransaction(original.txid);
+    expect(loaded.rawHex, original.rawHex);
+    expect(loaded.fee, original.fee);
+    expect(loaded.virtualSize, original.virtualSize);
+    expect(await client.getTransactionConfirmation(original.txid), isFalse);
+    missing = true;
+    expect(await client.getTransactionConfirmation(original.txid), isNull);
+    expect(await client.getSpendingTransactionIds(original.txid), [
+      null,
+      'child',
+    ]);
+    missing = false;
+    data['fee'] = original.fee + 1;
+    await expectLater(
+      client.getTransaction(original.txid),
+      throwsFormatException,
+    );
+    await expectLater(client.getTransaction('22' * 32), throwsFormatException);
+  });
+
+  test('取引本体の404だけを未送信とし、不正応答や通信障害を未承認扱いしない', () async {
+    var statusCode = 200;
+    Map<String, dynamic> data = {
+      'txid': txid,
+      'status': {'confirmed': false},
+    };
+    final client = BitcoinBlockchainClient(
+      network: Network.testnet,
+      client: MockClient((request) async {
+        expect(request.url.path, '/testnet4/api/tx/$txid');
+        return http.Response(jsonEncode(data), statusCode);
+      }),
+    );
+    addTearDown(client.close);
+    expect(await client.getTransactionConfirmation(txid), isFalse);
+    data['status'] = {'confirmed': true};
+    expect(await client.getTransactionConfirmation(txid), isTrue);
+    statusCode = 404;
+    expect(await client.getTransactionConfirmation(txid), isNull);
+    statusCode = 503;
+    await expectLater(
+      client.getTransactionConfirmation(txid),
+      throwsA(isA<http.ClientException>()),
+    );
+    statusCode = 200;
+    for (final invalid in [
+      {
+        'txid': 'bb' * 32,
+        'status': {'confirmed': false},
+      },
+      {'txid': txid},
+      {
+        'txid': txid,
+        'status': {'confirmed': 'false'},
+      },
+    ]) {
+      data = invalid;
+      await expectLater(
+        client.getTransactionConfirmation(txid),
+        throwsFormatException,
+      );
+    }
+  });
+
+  test('履歴では未承認で自分の入力とお釣りを持つ変更可能な送金だけを対象にする', () async {
+    for (final entry in [
+      (0xfffffffd, false, mainnetAddress, true, true),
+      (0xffffffff, false, mainnetAddress, true, false),
+      (0xfffffffd, true, mainnetAddress, true, false),
+      (0xfffffffd, false, 'other', true, false),
+      (0xfffffffd, false, mainnetAddress, false, false),
+    ]) {
+      final data = {
+        'txid': txid,
+        'vin': [
+          {
+            'sequence': entry.$1,
+            'prevout': {'scriptpubkey_address': entry.$3, 'value': 10000},
+          },
+        ],
+        'vout': [
+          {
+            'scriptpubkey_address': testnetAddress,
+            'scriptpubkey_type': 'v0_p2wpkh',
+            'value': 5000,
+          },
+          if (entry.$4) {'scriptpubkey_address': mainnetAddress, 'value': 4000},
+        ],
+        'status': {'confirmed': entry.$2},
+      };
+      final client = BitcoinBlockchainClient(
+        network: Network.mainnet,
+        client: MockClient((_) async => http.Response(jsonEncode([data]), 200)),
+      );
+      addTearDown(client.close);
+      final history = (await client.getTransactionHistory(
+        mainnetAddress,
+      )).single;
+      expect(history.canReplace, entry.$5);
+      expect(history.toAddress, entry.$5 ? testnetAddress : null);
+    }
+  });
 
   Map<String, dynamic> historyTransaction(
     int index, {

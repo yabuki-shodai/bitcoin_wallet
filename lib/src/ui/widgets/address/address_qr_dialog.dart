@@ -11,6 +11,7 @@ class AddressQrDialog extends StatefulWidget {
     required this.name,
     required this.address,
     this.onSend,
+    this.onSendReplaceable,
     this.onRename,
     this.onCopy,
     this.onOpenExplorer,
@@ -21,6 +22,7 @@ class AddressQrDialog extends StatefulWidget {
   final String name;
   final String address;
   final VoidCallback? onSend;
+  final VoidCallback? onSendReplaceable;
   final Future<void> Function(String)? onRename;
   final VoidCallback? onCopy;
   final VoidCallback? onOpenExplorer;
@@ -159,6 +161,12 @@ class _AddressQrDialogState extends State<AddressQrDialog> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+                SelectableText(
+                  widget.address,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall?.copyWith(height: 1.5),
+                ),
                 const SizedBox(height: 24),
                 FilledButton.icon(
                   onPressed: widget.onSend,
@@ -171,6 +179,20 @@ class _AddressQrDialogState extends State<AddressQrDialog> {
                   icon: const Icon(Icons.send),
                   label: const Text('送金'),
                 ),
+                if (widget.onSendReplaceable != null) ...[
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: widget.onSendReplaceable,
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(52),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                    ),
+                    icon: const Icon(Icons.edit_outlined),
+                    label: const Text('変更可能な送金'),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 FilledButton.icon(
                   onPressed: widget.onOpenExplorer,
